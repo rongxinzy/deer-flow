@@ -50,9 +50,11 @@ def _session_id(
 def _memory_target_uris(peer_id: str) -> list[str]:
     """Return the self and current-peer memory roots for a request."""
 
+    # OpenViking >= 0.4 rejects the uid-less "viking://user/memories" spelling
+    # at the request boundary; "~" is the authenticated-user expansion.
     return [
-        "viking://user/memories",
-        f"viking://user/peers/{peer_id}/memories",
+        "viking://~/memories",
+        f"viking://~/peers/{peer_id}/memories",
     ]
 
 
