@@ -77,7 +77,7 @@ class OpenVikingConfig:
             base_url=str(cfg.pop("base_url", "http://127.0.0.1:1933")).rstrip("/"),
             storage_path=str(cfg.pop("storage_path", "")),
             owner_user_id=str(cfg.pop("owner_user_id", "")).strip(),
-            single_tenant_instance=_boolean(cfg, "single_tenant_instance", False),
+            single_tenant_instance=bool(cfg.pop("single_tenant_instance", False)),
             api_key=os.environ.get(api_key_env, "").strip(),
             api_key_env=api_key_env,
             default_peer_id=str(cfg.pop("default_peer_id", "deerflow")).strip(),
