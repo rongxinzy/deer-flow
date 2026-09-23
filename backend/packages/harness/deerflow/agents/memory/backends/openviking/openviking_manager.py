@@ -460,6 +460,16 @@ class OpenVikingMemoryManager(MemoryManager):
     ) -> str:
         resolved_user = str(user_id or "default")
         if resolved_user != self._config.owner_user_id:
+            if self._config.single_tenant_instance and resolved_user == "default":
+                # Auth-disabled single-tenant instance: the synthetic default
+                # user maps to the configured owner. The credential still
+                # belongs to exactly one user — the configured owner — so no
+                # cross-user sharing occurs.
+                logger.debug(
+                    "single_tenant_instance: mapping synthetic default user to OpenViking owner %r",
+                    self._config.owner_user_id,
+                )
+                return _canonical_peer_id(agent_name, self._config.default_peer_id)
             raise MemoryManagerError(f"OpenViking USER API key is bound to DeerFlow owner_user_id {self._config.owner_user_id!r}, but this request belongs to {resolved_user!r}. Refusing to share one credential across users.")
         return _canonical_peer_id(agent_name, self._config.default_peer_id)
 

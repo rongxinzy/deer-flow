@@ -32,6 +32,11 @@ class OpenVikingConfig:
     base_url: str
     storage_path: str
     owner_user_id: str
+    # Single-tenant instance binding: when true, the synthetic "default"
+    # runtime user of an auth-disabled DeerFlow instance maps to
+    # owner_user_id instead of tripping the credential-sharing refusal.
+    # Only valid when exactly one DeerFlow instance uses this credential.
+    single_tenant_instance: bool
     api_key: str = field(repr=False)
     api_key_env: str
     default_peer_id: str
@@ -72,6 +77,7 @@ class OpenVikingConfig:
             base_url=str(cfg.pop("base_url", "http://127.0.0.1:1933")).rstrip("/"),
             storage_path=str(cfg.pop("storage_path", "")),
             owner_user_id=str(cfg.pop("owner_user_id", "")).strip(),
+            single_tenant_instance=_boolean(cfg, "single_tenant_instance", False),
             api_key=os.environ.get(api_key_env, "").strip(),
             api_key_env=api_key_env,
             default_peer_id=str(cfg.pop("default_peer_id", "deerflow")).strip(),
