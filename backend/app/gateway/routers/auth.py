@@ -636,6 +636,104 @@ class PATSummaryResponse(BaseModel):
     revoked_at: str | None
 
 
+class ProvisionUserRequest(BaseModel):
+    """Admin API for programmatic user creation (operator provisioning)."""
+
+    email: EmailStr
+    password: str | None = Field(None, min_length=8, description="Plain password; null for PAT-only accounts")
+    system_role: str = Field(default="user", pattern="^(admin|user)$")
+    auto_pat: dict | None = Field(None, description="Auto-issue PAT: {name, scopes, expires_in_days?}")
+
+    @field_validator("password")
+    @classmethod
+    def _validate_password_strength(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _validate_strong_password(value)
+
+
+class ProvisionUserResponse(BaseModel):
+    """User creation + optional PAT in one atomic response."""
+
+    user: UserResponse
+    pat: PATCreatedResponse | None = Field(None, description="PAT if auto_pat was requested")
+
+
+def _require_admin_session(request: Request) -> None:
+    """Provisioning is admin-only and must come from an interactive session.
+
+    Session-source requirement (same rationale as require_session_source): a
+    leaked automation credential must not mint fresh users or long-lived
+    tokens. PAT/internal credentials are rejected even when they belong to an
+    admin.
+    """
+    require_session_source(request)
+    user = getattr(request.state, "user", None)
+    if user is None or getattr(user, "system_role", None) != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin session required")
+
+
+@router.post("/provision", status_code=status.HTTP_201_CREATED, response_model=ProvisionUserResponse, dependencies=[Depends(_require_admin_session)])
+async def provision_user(request: Request, body: ProvisionUserRequest):
+    """Create a user account programmatically (admin session required).
+
+    One atomic call for operator provisioning: create the account and, when
+    ``auto_pat`` is set, issue its first PAT so the caller never needs the
+    user's password. The raw PAT token is returned exactly once.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from app.gateway.auth.pat import generate_pat_token, pat_token_digest, validate_scopes
+    from app.gateway.deps import get_pat_repo
+
+    try:
+        user = await get_local_provider().create_user(
+            email=body.email,
+            password=body.password,
+            system_role=body.system_role,
+            needs_setup=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=AuthErrorResponse(code=AuthErrorCode.EMAIL_ALREADY_EXISTS, message=str(exc) or "Email already registered").model_dump(),
+        ) from exc
+
+    pat: PATCreatedResponse | None = None
+    if body.auto_pat is not None:
+        name = str(body.auto_pat.get("name") or "provisioned").strip() or "provisioned"
+        raw_scopes = body.auto_pat.get("scopes")
+        if not isinstance(raw_scopes, list) or not raw_scopes:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="auto_pat.scopes must be a non-empty list")
+        try:
+            scopes = validate_scopes([str(s) for s in raw_scopes])
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        expires_in_days = body.auto_pat.get("expires_in_days")
+        expires_at = datetime.now(UTC) + timedelta(days=int(expires_in_days)) if expires_in_days is not None else None
+        token = generate_pat_token()
+        record = await get_pat_repo(request).create(
+            user_id=str(user.id),
+            name=name[:PAT_MAX_NAME_LENGTH],
+            scopes=scopes,
+            token_digest=pat_token_digest(token),
+            expires_at=expires_at,
+        )
+        pat = PATCreatedResponse(
+            id=str(record["id"]),
+            name=str(record["name"]),
+            scopes=list(record.get("scopes") or []),
+            expires_at=str(record["expires_at"]) if record.get("expires_at") else None,
+            created_at=str(record["created_at"]),
+            token=token,
+        )
+
+    return ProvisionUserResponse(
+        user=UserResponse(id=str(user.id), email=user.email, system_role=user.system_role, oauth_provider=user.oauth_provider),
+        pat=pat,
+    )
+
+
 def _pat_summary(record: dict) -> PATSummaryResponse:
     return PATSummaryResponse(
         id=str(record["id"]),
