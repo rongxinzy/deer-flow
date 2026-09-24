@@ -460,13 +460,16 @@ class OpenVikingMemoryManager(MemoryManager):
     ) -> str:
         resolved_user = str(user_id or "default")
         if resolved_user != self._config.owner_user_id:
-            if self._config.single_tenant_instance and resolved_user == "default":
-                # Auth-disabled single-tenant instance: the synthetic default
-                # user maps to the configured owner. The credential still
-                # belongs to exactly one user — the configured owner — so no
-                # cross-user sharing occurs.
+            if self._config.single_tenant_instance:
+                # Single-tenant instance: one credential, one memory tenant.
+                # The runtime user varies per request (internal-auth owner
+                # header carries the human requester), but the memory belongs
+                # to the EMPLOYEE, not to the requester — every run of this
+                # instance maps onto the configured owner. Cross-employee
+                # isolation comes from the per-instance credential.
                 logger.debug(
-                    "single_tenant_instance: mapping synthetic default user to OpenViking owner %r",
+                    "single_tenant_instance: mapping runtime user %r onto OpenViking owner %r",
+                    resolved_user,
                     self._config.owner_user_id,
                 )
                 return _canonical_peer_id(agent_name, self._config.default_peer_id)
