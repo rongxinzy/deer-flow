@@ -2859,8 +2859,9 @@ run_ownership:
 # ============================================================================
 # Optional pre-execution authorization for tool calls.
 # When enabled, every tool call passes through the configured provider
-# before execution. Three options: built-in allowlist, OAP policy provider,
-# or custom provider. See backend/docs/GUARDRAILS.md for full documentation.
+# before execution. Four options: built-in allowlist, OAP policy provider,
+# custom provider, or the TypeSafe (Jev) risk gate. See
+# backend/docs/GUARDRAILS.md for full documentation.
 #
 # Providers are loaded by class path via resolve_variable (same as models/tools).
 
@@ -2888,6 +2889,38 @@ run_ownership:
 #     use: my_package:MyGuardrailProvider
 #     config:
 #       key: value
+
+# --- Option 4: TypeSafe (Jev) pre-execution risk gate (network provider) ---
+#   Sends the tool name and its full argument JSON to POST /v1/systemone and
+#   denies calls whose risk probability reaches `threshold`. Requires an API
+#   key: export TYPESAFE_API_KEY=... (or set `api_key` below).
+#
+#   `tools: ["bash"]` is a SMOKE-TEST scope, not a production recommendation:
+#   the operation can move to an unprobed tool, an MCP tool or a subagent, and
+#   long heredocs / large write_file payloads are denied locally once the
+#   argument text exceeds max_state_chars. Probe every tool that can perform the
+#   risky work instead of narrowing the gate. Pointing `guardrails.provider` at
+#   TypeSafe REPLACES the allowlist/OAP provider: the allow half of an old
+#   allowlist moves into `allowed_tools` below, while deny rules still belong to
+#   `authorization.*` (see backend/docs/GUARDRAILS.md, Option 4).
+# guardrails:
+#   enabled: true
+#   fail_closed: true
+#   provider:
+#     use: deerflow.guardrails.typesafe:TypeSafeGuardrailProvider
+#     config:
+#       model: jev-latest           # pin an exact version (e.g. jev-1.13.0) when
+#                                   # decisions must stay traceable across releases
+#       threshold: 0.5              # example value; calibrate with the online evaluation
+#       tools: ["bash"]
+#       # allowed_tools: ["bash", "read_file", "write_file"]   # hard permission list:
+#       #   unlisted tools are refused locally before any state is built, and
+#       #   listed tools still have to pass the risk gate. Omit to enforce none;
+#       #   [] refuses every tool.
+#       # Optional: api_key / api_key_env (default TYPESAFE_API_KEY) / base_url /
+#       #           timeout / deadline_seconds / max_attempts / retry_backoff /
+#       #           max_state_chars / cache_size / cache_ttl_seconds /
+#       #           instructions / criteria
 
 # ============================================================================
 # Authorization Configuration
