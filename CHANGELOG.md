@@ -2404,6 +2404,12 @@ This release closes that milestone with **772 merged pull requests**.
 
 ### Fixed
 
+- **dev:** `make stop` / `make dev` can now reclaim dev ports held by a sibling
+  worktree whose path contains spaces. `serve.sh` built its worktree-root list
+  with `awk '{print $2}'` over `git worktree list --porcelain`, whose paths are
+  unquoted, so `.../deer flow two` was recorded as `.../deer`; a Gateway or
+  frontend started from that worktree was never recognised as deer-flow's and
+  the start aborted with "port already in use". The whole path is kept now. ([#5856])
 - **uploads:** A malformed `files[*].size` in a run's message metadata no
   longer fails the whole run. `UploadsMiddleware` validated every other field
   of a client-supplied file entry fail-soft but passed `size` straight to
@@ -6086,5 +6092,6 @@ with **180 merged pull requests** since the first 2.0 milestone tag.
 [#5845]: https://github.com/bytedance/deer-flow/pull/5845
 [#5848]: https://github.com/bytedance/deer-flow/pull/5848
 [#5855]: https://github.com/bytedance/deer-flow/pull/5855
+[#5856]: https://github.com/bytedance/deer-flow/pull/5856
 [#5859]: https://github.com/bytedance/deer-flow/pull/5859
 
