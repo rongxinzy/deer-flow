@@ -727,6 +727,11 @@
 
 ### 修复
 
+- **配置：** 在上一次编辑仍在加载时落盘的 `config.yaml` 编辑，不再要等到下一次编辑才生效。
+  `get_app_config()` 的加载器先解析文件，再重新读取一遍来计算缓存签名，因此夹在两次读取
+  之间的写入会让缓存以较新内容的签名保存较旧的内容，而签名比较永远无法发现这种状态。
+  现在加载器只读取文件一次，并对解析的那份字节计算签名；与加载竞争的写入只会在下一次
+  调用时多触发一次重载。([#5848])
 - **配置：** `request_admission.requests_per_minute` 与 `max_queue_size` 现在与其他字段一样
   接受 `$VAR` 环境变量引用。这两个字段是严格整数，布尔值与浮点数仍会被拒绝；但 `$VAR`
   替换得到的永远是字符串，因此即使 `RPM=60`，`requests_per_minute: $RPM` 也会让整个配置
@@ -3578,3 +3583,4 @@ DeerFlow 2.0 是围绕"超级智能体"框架的彻底重写，核心包含子�
 [#5776]: https://github.com/bytedance/deer-flow/pull/5776
 [#5777]: https://github.com/bytedance/deer-flow/pull/5777
 [#5838]: https://github.com/bytedance/deer-flow/pull/5838
+[#5848]: https://github.com/bytedance/deer-flow/pull/5848
