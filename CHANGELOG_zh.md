@@ -2120,6 +2120,46 @@
 
 ### 修复
 
+- **发布：** 版本升级不再把 `backend/uv.lock` 落下。`scripts/bump_version.sh` 会改写
+  `backend/pyproject.toml`、`frontend/package.json` 与 Helm chart，但 lockfile 同样记录了
+  根包自身的版本（uv 保留其 PEP 440 形式，因此 `2.1.0-rc0` 存为 `2.1.0rc0`），于是文档给出的
+  发布步骤产出的提交会被 lock 相关 CI 拦下：`uv lock --check` 判其过期，`uv sync --locked`
+  也会拒绝该工作区；装了 pre-commit 时还会更早在 `uv-lock-check` 钩子上失败。现在该脚本会用
+  `uv lock` 刷新 lockfile，并在缺少 `uv` 时于修改任何文件之前退出，而不是留下一个只改一半的
+  工作区。实际改动仅涉及根包的那一行版本号。([#5859])
+- **配置：** 在上一次编辑仍在加载时落盘的 `config.yaml` 编辑，不再要等到下一次编辑才生效。
+  `get_app_config()` 的加载器先解析文件，再重新读取一遍来计算缓存签名，因此夹在两次读取
+  之间的写入会让缓存以较新内容的签名保存较旧的内容，而签名比较永远无法发现这种状态。
+  现在加载器只读取文件一次，并对解析的那份字节计算签名；与加载竞争的写入只会在下一次
+  调用时多触发一次重载。([#5848])
+- **配置：** `request_admission.requests_per_minute` 与 `max_queue_size` 现在与其他字段一样
+  接受 `$VAR` 环境变量引用。这两个字段是严格整数，布尔值与浮点数仍会被拒绝；但 `$VAR`
+  替换得到的永远是字符串，因此即使 `RPM=60`，`requests_per_minute: $RPM` 也会让整个配置
+  加载失败并报 "Input should be a valid integer"。现在以字符串形式到达的十进制整数字面量会在
+  严格校验之前被转换；其他字符串仍会被拒绝。([#5838])
+- **调度器：** 在 SQLite 上，调度分发进行中暂停计划任务时不再丢失暂停状态。
+  `release_dispatch_lease` 依据租约持有者做校验（暂停会清除该字段），但读取任务行时没有先获取
+  SQLite 的写锁，因此过期的读取会通过校验，并把任务状态写回 `enabled` 且不改动 `next_run_at`，
+  导致接口已回复“已暂停”的任务仍被继续触发。现在该读取会像该仓储中其他写入路径一样先获取写锁。
+  PostgreSQL 不受影响。([#5777])
+- **mcp：** MCP 延迟初始化在工具发现本身抛出 `RuntimeError`（例如
+  `McpTaskConfigurationError`）时，不再把发现流程跑两遍。`get_cached_mcp_tools()` 里的
+  `asyncio.run` 兜底只为 `get_event_loop()` 失败而设，却同时捕获了发现阶段的错误，于是在
+  放弃之前会重新拉起每一个 stdio 服务器（并重新获取 OAuth 令牌）；在运行中的事件循环里，
+  它记录的还是误导性的 "asyncio.run() cannot be called from a running event loop"
+  堆栈，而不是真正的原因。
+- **上传：** 删除已上传的文档时，不再连带删除其旁边转换生成的 Markdown。转换以文档主干名
+  命名配套文件，名称被占用时回退为 `_N` 后缀，因此文档旁的 `.md` 可能属于主干名相同的另一个
+  文档，或属于用户自己：上传 `a.docx` 与 `a.pdf` 会生成 `a.md` 与 `a_1.md`，删除 `a.pdf`
+  却会销毁 `a.docx` 的配套文件。现在配套文件会保留、继续出现在列表中，可单独删除。([#5673])
+- **nginx：** 把 600 秒读取超时扩展到其余两个会等待 Gateway 的 location，它们在线程路由的修复
+  之后仍沿用 nginx 默认的 60 秒。`/api/` 兜底 location 之后：无状态的 `POST /api/runs/wait`
+  阻塞在同一套运行完成等待上，并在客户端断开时取消该运行，因此等待超过 60 秒的 API 调用方会
+  同时收到 504 **并且**运行被取消；输入框的 `POST /api/input-polish` 则等待一次性模型调用。
+  `/api/skills` 之后：安装 `.skill` 压缩包会对其中每个文件各做一次 LLM 安全扫描，自定义技能的
+  编辑与回滚各再做一次，它们都没有自己的超时；此前只有同级的 `/api/skills/install/upload`
+  拿到了更长的超时，因此同样的安装经由 `POST /api/skills/install` 会在 60 秒失败。
+  Docker、本地开发与 Helm 配置均已应用。([#5524])
 - **前端：** 项目会话行上的 `…`（kebab）菜单不再溢出侧边栏。在侧边栏的按项目分组模式下，
   缩进的嵌套菜单继承了 `SidebarMenu` 的 `w-full` 又额外带着 `ml-4`，实际宽度是"100% + 16px"，
   其绝对定位的 `right-1` 操作按钮因此落到侧边栏边缘之外——活跃项目分组下的行被裁剪，Archived
@@ -5135,3 +5175,4 @@ DeerFlow 2.0 是围绕"超级智能体"框架的彻底重写，核心包含子�
 [#5844]: https://github.com/bytedance/deer-flow/pull/5844
 [#5845]: https://github.com/bytedance/deer-flow/pull/5845
 [#5848]: https://github.com/bytedance/deer-flow/pull/5848
+[#5859]: https://github.com/bytedance/deer-flow/pull/5859

@@ -2404,6 +2404,57 @@ This release closes that milestone with **772 merged pull requests**.
 
 ### Fixed
 
+- **release:** Bumping the version no longer leaves `backend/uv.lock` behind.
+  `scripts/bump_version.sh` rewrote `backend/pyproject.toml`, `frontend/package.json`
+  and the Helm chart, but the lockfile records the root package's own version too
+  (uv keeps its PEP 440 form, so `2.1.0-rc0` is stored as `2.1.0rc0`). The
+  documented release step therefore produced a commit whose lock CI rejects:
+  `uv lock --check` fails on the stale lock and `uv sync --locked` refuses the
+  tree, and with pre-commit installed it broke a step earlier on the
+  `uv-lock-check` hook. The script now refreshes the lock with `uv lock` and exits
+  before editing anything when `uv` is missing, instead of leaving a half-bumped
+  working tree behind. Only the root package's version line moves. ([#5859])
+- **config:** A `config.yaml` edit that lands while the previous edit is still
+  being loaded is no longer lost until the next edit. `get_app_config()`'s
+  loader parsed the file and then hashed it again to record the cache
+  signature, so a write between those two reads left the cache holding the
+  older content under the newer content's signature — a state the signature
+  comparison can never detect. The loader now reads the file once and signs
+  the bytes it parsed; a write that races the load just triggers one more
+  reload on the next call. ([#5848])
+- **config:** `request_admission.requests_per_minute` and `max_queue_size` now
+  accept `$VAR` environment references like every other field. Both are strict
+  integers so a bool or float is still rejected, but `$VAR` substitution always
+  produces a string, so `requests_per_minute: $RPM` failed the whole config load
+  with "Input should be a valid integer" even when `RPM=60`. A decimal literal
+  delivered as a string is now converted before the strict check; any other
+  string is still rejected. ([#5838])
+- **scheduler:** Pausing a scheduled task no longer loses the pause when a
+  dispatch is in flight on SQLite. `release_dispatch_lease` guards on the lease
+  owner — which pausing clears — but read the row without taking SQLite's
+  writer, so a stale read passed the guard and wrote the task back to
+  `enabled` with `next_run_at` untouched, leaving the scheduler firing a task
+  the API had reported as paused. The read now takes the writer first, as every
+  other mutating path in that repository does. PostgreSQL was unaffected.
+  ([#5777])
+- **mcp:** Lazy MCP initialization no longer runs tool discovery twice when
+  discovery itself raises a `RuntimeError` such as `McpTaskConfigurationError`.
+  The `asyncio.run` fallback in `get_cached_mcp_tools()` was meant only for
+  `get_event_loop()` failing, but it also caught discovery errors and
+  re-spawned every stdio server (and re-fetched OAuth tokens) before giving
+  up; inside a running loop it also logged a misleading "asyncio.run() cannot
+  be called from a running event loop" traceback instead of the real cause.
+- **uploads:** Deleting an uploaded document no longer deletes the converted
+  Markdown beside it. Conversion names a companion after the document's stem
+  and falls back to a `_N` suffix when that name is taken, so the `.md` next to
+  a document can belong to another document sharing the stem, or to the user:
+  uploading `a.docx` and `a.pdf` produced `a.md` and `a_1.md`, and deleting
+  `a.pdf` destroyed `a.docx`'s companion. Companions now survive their
+  document, stay listed, and can be deleted on their own. ([#5673])
+- **subagents:** Recognize zero-byte regular deliverables in remote sandbox
+  acceptance checks. Readable empty files now satisfy `exists` and
+  `file_written` and deterministically fail `non-empty`, instead of remaining
+  UNVERIFIED. ([#5559])
 - **frontend:** Keep the `…` (kebab) menu on project chat rows inside the
   sidebar. In the sidebar's grouped Projects mode the indented nested menus
   kept `SidebarMenu`'s `w-full` while carrying an extra `ml-4`, so they were
@@ -6026,3 +6077,5 @@ with **180 merged pull requests** since the first 2.0 milestone tag.
 [#5844]: https://github.com/bytedance/deer-flow/pull/5844
 [#5845]: https://github.com/bytedance/deer-flow/pull/5845
 [#5848]: https://github.com/bytedance/deer-flow/pull/5848
+[#5859]: https://github.com/bytedance/deer-flow/pull/5859
+
