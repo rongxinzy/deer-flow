@@ -323,6 +323,12 @@ This release closes that milestone with **181 merged pull requests**.
 
 ### Fixed
 
+- **projects:** The conversation-files view no longer shows an empty heading
+  for a member thread that has no title yet. A thread's `display_name` is
+  `null` on the wire until title generation has run (or if it never does), but
+  the file-group type declared it as a required string and rendered it as-is,
+  so files uploaded before the first reply sat under a blank line. Such groups
+  now read "Untitled", matching the project's thread list. ([#5879])
 - **skills:** Deleting a custom skill whose package directory is an
   operator-managed symlink now succeeds. The storage contract accepts a
   one-level link under `custom/`, but `delete_custom_skill` removed the
@@ -6102,5 +6108,6 @@ with **180 merged pull requests** since the first 2.0 milestone tag.
 [#5855]: https://github.com/bytedance/deer-flow/pull/5855
 [#5856]: https://github.com/bytedance/deer-flow/pull/5856
 [#5859]: https://github.com/bytedance/deer-flow/pull/5859
+[#5879]: https://github.com/bytedance/deer-flow/pull/5879
 [#5881]: https://github.com/bytedance/deer-flow/pull/5881
 
