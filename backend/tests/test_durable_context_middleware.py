@@ -1382,3 +1382,78 @@ class TestSummaryRecordWindowSplit:
         ]
 
         assert middleware.before_model({"messages": msgs}, None) is None
+
+
+class TestArtifactRegistryProjection:
+    def _artifact_entry(self, handle: str = "art_a1b2c3d4") -> dict:
+        return {
+            "handle": handle,
+            "tool_name": "mcp_server_analyze",
+            "tool_call_id": "call_1",
+            "call_index": 0,
+            "artifact_type": "file",
+            "display_name": "report.html",
+            "real_ref": "/mnt/user-data/outputs/report.html",
+            "mime_type": "text/html",
+            "created_at": "2026-08-19T00:00:00Z",
+            "consumed_by": [],
+        }
+
+    def test_artifact_handles_injected_into_durable_data_block(self):
+        model = RecordingFakeModel(responses=[AIMessage(content="ok")])
+        agent = create_agent(
+            model=model,
+            tools=[fake_task],
+            middleware=[DurableContextMiddleware()],
+            state_schema=ThreadState,
+        )
+
+        agent.invoke(
+            {
+                "messages": [HumanMessage(content="continue")],
+                "tool_artifacts": [self._artifact_entry()],
+            }
+        )
+
+        data = [message for message in model.received[-1] if isinstance(message, HumanMessage) and message.additional_kwargs.get("durable_context_data")]
+        assert data, "durable context data message not injected"
+        assert "art_a1b2c3d4" in data[0].content
+        assert "report.html" in data[0].content
+
+    def test_artifact_projection_disabled_by_flag(self):
+        model = RecordingFakeModel(responses=[AIMessage(content="ok")])
+        agent = create_agent(
+            model=model,
+            tools=[fake_task],
+            middleware=[DurableContextMiddleware(inject_tool_artifacts=False)],
+            state_schema=ThreadState,
+        )
+
+        agent.invoke(
+            {
+                "messages": [HumanMessage(content="continue")],
+                "tool_artifacts": [self._artifact_entry()],
+            }
+        )
+
+        data = [message for message in model.received[-1] if isinstance(message, HumanMessage) and message.additional_kwargs.get("durable_context_data")]
+        assert all("art_a1b2c3d4" not in message.content for message in data)
+
+
+def test_artifact_projection_coexists_with_task_notes_and_summary():
+    model = RecordingFakeModel(responses=[AIMessage(content="ok")])
+    middleware = DurableContextMiddleware(task_continuity_enabled=True)
+    agent = create_agent(model=model, tools=[], middleware=[middleware], state_schema=ThreadState)
+    agent.invoke(
+        {
+            "messages": [HumanMessage(content="continue")],
+            "summary_text": "Previously generated a report.",
+            "task_notes": {"next": {"content": "Import the report", "source_ids": [], "authority": "model_report"}},
+            "tool_artifacts": [TestArtifactRegistryProjection()._artifact_entry()],
+        }
+    )
+    blocks = [message.content for message in model.received[-1] if message.additional_kwargs.get("durable_context_data")]
+    assert len(blocks) == 1
+    assert "art_a1b2c3d4" in blocks[0]
+    assert "Import the report" in blocks[0]
+    assert "Previously generated a report." in blocks[0]
