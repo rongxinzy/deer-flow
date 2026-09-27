@@ -10,6 +10,7 @@ import React, {
   type ReactNode,
 } from "react";
 
+import { getPlatformChatURL, isPlatformMode } from "../platform-mode";
 import { isStaticWebsiteOnly } from "../static-mode";
 
 import { type User, buildLoginUrl } from "./types";
@@ -50,6 +51,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const staticMode = isStaticWebsiteOnly();
+  const platformMode = isPlatformMode();
 
   const isAuthenticated = user !== null;
 
@@ -67,7 +69,9 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
    * Used when initialUser might be stale (e.g., after tab was inactive)
    */
   const refreshUser = useCallback(async () => {
-    if (staticMode) return;
+    // Platform mode authenticates at the portal; /api/v1/auth/me is not
+    // reachable through the proxy.
+    if (staticMode || platformMode) return;
 
     try {
       setIsLoading(true);
@@ -92,7 +96,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [staticMode, pathname, router]);
+  }, [staticMode, platformMode, pathname, router]);
 
   /**
    * Logout - call FastAPI logout endpoint and clear local state
@@ -111,6 +115,13 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
 
     if (staticMode) {
       router.push("/");
+      return;
+    }
+
+    if (platformMode) {
+      // The portal entry page owns the session lifecycle (its own logout
+      // drops the cookie server-side).
+      window.location.href = getPlatformChatURL() || "/";
       return;
     }
 
@@ -135,7 +146,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
 
     // Redirect to home page
     router.push("/");
-  }, [staticMode, router]);
+  }, [staticMode, platformMode, router]);
 
   /**
    * Handle visibility change - refresh user when tab becomes visible again.
@@ -144,7 +155,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const lastCheckRef = React.useRef(0);
 
   useEffect(() => {
-    if (staticMode) return;
+    if (staticMode || platformMode) return;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible" || user === null) return;
@@ -158,7 +169,7 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [staticMode, user, refreshUser]);
+  }, [staticMode, platformMode, user, refreshUser]);
 
   const value: AuthContextType = {
     user,
@@ -194,7 +205,7 @@ export function useRequireAuth(): AuthContextType {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (isStaticWebsiteOnly()) return;
+    if (isStaticWebsiteOnly() || isPlatformMode()) return;
 
     // Only redirect if we're sure user is not authenticated (not just loading)
     if (!auth.isLoading && !auth.isAuthenticated) {

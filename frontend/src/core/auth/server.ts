@@ -1,10 +1,12 @@
 import { cookies } from "next/headers";
 
+import { isPlatformMode } from "../platform-mode";
 import { isStaticWebsiteOnly } from "../static-mode";
 
 import { AUTH_DISABLED_USER, isAuthDisabledMode } from "./auth-disabled-user";
 import { AUTH_REQUEST_TIMEOUT_MS } from "./constants";
 import { getGatewayConfig } from "./gateway-config";
+import { PLATFORM_USER } from "./platform-user";
 import { STATIC_WEBSITE_USER } from "./static-user";
 import { type AuthResult, userSchema } from "./types";
 
@@ -24,6 +26,15 @@ export async function getServerSideUser(): Promise<AuthResult> {
     return {
       tag: "authenticated",
       user: AUTH_DISABLED_USER,
+    };
+  }
+
+  // Platform mode authenticates at the portal; the gateway session this
+  // guard would probe does not exist by design.
+  if (isPlatformMode()) {
+    return {
+      tag: "authenticated",
+      user: PLATFORM_USER,
     };
   }
 

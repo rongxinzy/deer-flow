@@ -1,4 +1,5 @@
 import { buildLoginUrl } from "@/core/auth/types";
+import { getPlatformChatURL, isPlatformMode } from "@/core/platform-mode";
 import { isStaticWebsiteOnly } from "@/core/static-mode";
 
 import { UnauthorizedError } from "./errors";
@@ -96,6 +97,13 @@ export async function fetch(
   });
 
   if (res.status === 401) {
+    if (isPlatformMode()) {
+      // The portal session expired. /login would bounce straight back: the
+      // SSR guard always authenticates in platform mode. Return to the
+      // portal entry page, which re-authenticates and re-picks the employee.
+      window.location.href = getPlatformChatURL() || "/";
+      throw new UnauthorizedError();
+    }
     // Include the search string: routes that carry their target in the query
     // (e.g. the standalone artifact viewer) are otherwise unrecoverable after
     // login, which lands on the default workspace instead.
