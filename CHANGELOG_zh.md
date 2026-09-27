@@ -328,6 +328,13 @@
 
 ### 修复
 
+- **Docker：** 通过统一入口上传超过 1 MB 的项目文档不再被 nginx 直接以 `413` 拒绝。
+  `POST /api/projects/{id}/documents` 是 multipart 上传，Gateway 接受至多
+  `uploads.max_file_size`（默认 50 MiB）的文件，但没有任何 nginx location 匹配它，于是请求
+  落到 `/api/` 兜底块，被 nginx 默认的 `client_max_body_size 1m` 在到达 Gateway 之前拒绝——
+  一个 2 MB 的 PDF 会被拒，而同一个文件上传到会话里却没问题。三份维护中的配置（Docker、
+  `make dev`、Helm）现在都为 `/api/projects/{id}/documents` 单独设置 location，沿用会话上传的
+  设置（100M 上限、请求体流式转发）以及兜底块原本给予的读超时；兜底块自身保持 nginx 默认值。([#5934])
 - **Docker：** 生产栈（`make up` / `scripts/deploy.sh`）现在可以在禁用 IPv6 的主机上启动。
   `docker/nginx/nginx.conf` 同时监听 `[::]:2026`；在以 `ipv6.disable=1` 启动的内核上，这条监听会让
   nginx 在启动时退出，容器因此反复重启，`make up` 永远无法就绪。开发用 compose 文件自 #2027 起
@@ -5232,3 +5239,4 @@ DeerFlow 2.0 是围绕"超级智能体"框架的彻底重写，核心包含子�
 [#5893]: https://github.com/bytedance/deer-flow/pull/5893
 [#5900]: https://github.com/bytedance/deer-flow/pull/5900
 [#5928]: https://github.com/bytedance/deer-flow/pull/5928
+[#5934]: https://github.com/bytedance/deer-flow/pull/5934
