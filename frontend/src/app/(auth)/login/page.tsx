@@ -213,7 +213,7 @@ export default function LoginPage() {
       />
       <div className="border-border/20 bg-background/5 w-full max-w-md space-y-6 rounded-3xl border p-8 backdrop-blur-sm">
         <div className="text-center">
-          <h1 className="text-foreground font-serif text-3xl">DeerFlow</h1>
+          <h1 className="text-foreground font-serif text-3xl">知远</h1>
           <p className="text-muted-foreground mt-2">
             {isLogin ? t.login.signInTitle : t.login.createAccountTitle}
           </p>
@@ -269,7 +269,9 @@ export default function LoginPage() {
             </label>
             <Input
               id="email"
+              name="email"
               type="email"
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t.login.emailPlaceholder}
@@ -282,7 +284,9 @@ export default function LoginPage() {
             </label>
             <Input
               id="password"
+              name="password"
               type="password"
+              autoComplete={isLogin ? "current-password" : "new-password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t.login.passwordPlaceholder}
