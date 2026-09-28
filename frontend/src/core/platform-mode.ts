@@ -12,9 +12,20 @@ export function isPlatformMode() {
   return env.NEXT_PUBLIC_PLATFORM_MODE === "true";
 }
 
-/** The portal /chat entry page (login + employee picker). */
+/**
+ * The portal /chat entry page (login + employee picker). The default derives
+ * from this app's own host (the portal runs on the same host, NodePort
+ * 30190), so whichever hostname the user typed keeps every origin on one
+ * hostname — cookies ignore ports, not hosts — and no address is baked into
+ * the image. NEXT_PUBLIC_PORTAL_CHAT_URL overrides for split deployments.
+ */
 export function getPlatformChatURL() {
-  return env.NEXT_PUBLIC_PORTAL_CHAT_URL ?? "";
+  const configured = env.NEXT_PUBLIC_PORTAL_CHAT_URL;
+  if (configured) return configured;
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:30190/chat`;
+  }
+  return "";
 }
 
 /** The selected digital employee, from the portal-set cookie (client only). */
