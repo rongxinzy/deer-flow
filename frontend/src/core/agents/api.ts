@@ -98,7 +98,7 @@ export async function checkAgentName(
     );
   } catch {
     throw new AgentNameCheckError(
-      "Could not reach the DeerFlow backend.",
+      "无法连接知远后端服务。",
       "backend_unreachable",
     );
   }
@@ -110,7 +110,7 @@ export async function checkAgentName(
     }
     if (BACKEND_UNAVAILABLE_STATUSES.has(res.status)) {
       throw new AgentNameCheckError(
-        "Could not reach the DeerFlow backend.",
+        "无法连接知远后端服务。",
         "backend_unreachable",
       );
     }
