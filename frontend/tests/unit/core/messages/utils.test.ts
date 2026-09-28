@@ -1986,3 +1986,33 @@ describe("clarification run boundaries", () => {
     expect(groups[0]?.type).toBe("assistant");
   });
 });
+
+describe("extractReasoningContentFromMessage: Anthropic thinking blocks", () => {
+  const thinkingMessage = (blocks: unknown[]) =>
+    ({ type: "ai", content: blocks }) as never;
+
+  test("joins thinking blocks across tool rounds", () => {
+    const message = thinkingMessage([
+      { type: "thinking", thinking: "first round reasoning", signature: "s1" },
+      { type: "tool_use", id: "t1", name: "search", input: {} },
+      { type: "thinking", thinking: "second round reasoning", signature: "s2" },
+      { type: "text", text: "answer" },
+    ]);
+    expect(extractReasoningContentFromMessage(message)).toBe(
+      "first round reasoning\n\nsecond round reasoning",
+    );
+  });
+
+  test("single leading thinking block keeps prior behavior", () => {
+    const message = thinkingMessage([
+      { type: "thinking", thinking: "only round", signature: "s" },
+      { type: "text", text: "answer" },
+    ]);
+    expect(extractReasoningContentFromMessage(message)).toBe("only round");
+  });
+
+  test("no thinking blocks yields null", () => {
+    const message = thinkingMessage([{ type: "text", text: "answer" }]);
+    expect(extractReasoningContentFromMessage(message)).toBeNull();
+  });
+});

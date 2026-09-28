@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useI18n } from "@/core/i18n/hooks";
+import { isPlatformMode } from "@/core/platform-mode";
 import { cn } from "@/lib/utils";
 
 function SettingsPageLoading() {
@@ -135,11 +136,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
         label: t.settings.sections.channels,
         icon: CableIcon,
       },
-      {
-        id: "memory",
-        label: t.settings.sections.memory,
-        icon: BrainIcon,
-      },
+      // Platform mode: memory is carried by the external OpenViking backend,
+      // which does not implement this built-in backend's list API — the
+      // section would always error (501). Hide it there.
+      ...(isPlatformMode()
+        ? []
+        : [
+            {
+              id: "memory",
+              label: t.settings.sections.memory,
+              icon: BrainIcon,
+            },
+          ]),
       {
         id: "subagents",
         label: t.settings.sections.subagents,

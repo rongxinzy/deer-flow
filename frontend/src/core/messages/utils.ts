@@ -854,9 +854,17 @@ export function extractReasoningContentFromMessage(message: Message) {
     return message.additional_kwargs.reasoning_content as string | null;
   }
   if (Array.isArray(message.content)) {
-    const part = message.content[0];
-    if (part && typeof part === "object" && "thinking" in part) {
-      return part.thinking as string;
+    // Anthropic emits one thinking block per tool round; join them all so
+    // reasoning after the first round is not silently dropped.
+    const thinking = message.content
+      .map((part) =>
+        part && typeof part === "object" && "thinking" in part
+          ? (part as { thinking?: unknown }).thinking
+          : undefined,
+      )
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+    if (thinking.length > 0) {
+      return thinking.join("\n\n");
     }
   }
   if (typeof message.content === "string") {
