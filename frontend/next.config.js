@@ -83,6 +83,23 @@ const config = {
 
     return rewrites;
   },
+  async headers() {
+    // Embedding: the Zhiyuan admin console hosts this app in an iframe on
+    // the same host (console NodePort 30196, chat UI 30195 — same site, so
+    // portal cookies flow). Only origins we own may frame us; everything
+    // else stays blocked (frame-ancestors-only CSP restricts nothing else).
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors 'self' http://*:30196 https://*:30196",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default withNextra(config);

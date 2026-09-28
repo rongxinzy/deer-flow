@@ -13,6 +13,16 @@ export function isPlatformMode() {
 }
 
 /**
+ * Embed mode: the admin console frames this app (console origin, same host)
+ * and provides the surrounding shell, so the chat UI hides its own brand
+ * row. Detected from ?embed=1 so a plain visit keeps the full chrome.
+ */
+export function isEmbedMode() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("embed") === "1";
+}
+
+/**
  * The portal /chat entry page (login + employee picker). The default derives
  * from this app's own host (the portal runs on the same host, NodePort
  * 30190), so whichever hostname the user typed keeps every origin on one
