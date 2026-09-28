@@ -37,6 +37,17 @@ RUN cd /app/frontend && pnpm install --frozen-lockfile
 # and the frontend falls back to package.json's version.
 ARG APP_VERSION=""
 ENV NEXT_PUBLIC_APP_VERSION=$APP_VERSION
+# Zhiyuan platform mode: route all API traffic through the de-portal proxy.
+# NEXT_PUBLIC_* inlines into the client bundle; the gateway URL is baked
+# into .next/routes-manifest.json by the rewrites in next.config.js, so it
+# must be present at BUILD time (a runtime-only env leaves 127.0.0.1:8001
+# destinations).
+ARG NEXT_PUBLIC_PLATFORM_MODE=""
+ARG NEXT_PUBLIC_PORTAL_CHAT_URL=""
+ARG PLATFORM_GATEWAY_URL=""
+ENV NEXT_PUBLIC_PLATFORM_MODE=$NEXT_PUBLIC_PLATFORM_MODE
+ENV NEXT_PUBLIC_PORTAL_CHAT_URL=$NEXT_PUBLIC_PORTAL_CHAT_URL
+ENV DEER_FLOW_INTERNAL_GATEWAY_BASE_URL=$PLATFORM_GATEWAY_URL
 RUN cd /app/frontend && SKIP_ENV_VALIDATION=1 pnpm build
 
 # ── Prod: minimal runtime with pre-built output ───────────────────────────────
