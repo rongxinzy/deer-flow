@@ -1,0 +1,60 @@
+# Builds the platform-mode chat UI image and publishes it to ghcr.
+# Trigger: push a v-tag (image tag drops the leading v), or run manually
+# with a tag input. The 251 Artifactory ghcr virtual fronts this registry
+# for the clusters, so clusters never log in to ghcr themselves.
+name: build-chat-ui
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (e.g. 0.1.9)"
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE: ghcr.io/rongxinzy/deerflow-chat-ui
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          target: prod
+          push: true
+          tags: ${{ env.IMAGE }}:${{ steps.tag.outputs.tag }}
+          build-args: |
+            NPM_REGISTRY=https://registry.npmmirror.com
+            NEXT_PUBLIC_PLATFORM_MODE=true
+            PLATFORM_GATEWAY_URL=http://de-portal.digital-employees.svc:8090
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
