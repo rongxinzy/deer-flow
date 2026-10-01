@@ -1,112 +1,96 @@
 """Prometheus metrics endpoint for the digital employee runtime.
 
-Exposes counters/gauges/histograms that answer "is this employee
-healthy and productive" — the operator and monitoring stack scrape
-/metrics to build dashboards and alerts.
+Outputs the Prometheus text exposition format without any external
+dependency (prometheus_client is not in the runtime image's venv).
+Metrics are process-local counters; they reset on restart, which is
+standard for Prometheus scraping.
 """
 import time
+from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, Request, Response
-from prometheus_client import (
-    CollectorRegistry,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_metrics,
-    multiprocess,
-)
+from fastapi import APIRouter, Response
 
 router = APIRouter(tags=["metrics"])
 
-REGISTRY = CollectorRegistry()
-multiprocess.MultiProcessCollector(REGISTRY)
+_START_TIME = time.time()
 
-# --- Conversations ----------------------------------------------------------
-CONVERSATIONS_ACTIVE = Gauge(
-    "deerflow_conversations_active",
-    "Currently open conversation threads",
-    registry=REGISTRY,
-)
-CONVERSATIONS_TOTAL = Counter(
-    "deerflow_conversations_total",
-    "Total conversation threads created",
-    registry=REGISTRY,
-)
+# Simple in-process metric store: name -> {labels_key -> value}
+_counters: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+_gauges: dict[str, float] = {}
 
-# --- Messages ----------------------------------------------------------------
-MESSAGES_TOTAL = Counter(
-    "deerflow_messages_total",
-    "Total messages processed",
-    labelnames=["role", "status"],
-    registry=REGISTRY,
-)
-MESSAGE_LATENCY = Histogram(
-    "deerflow_message_latency_seconds",
-    "End-to-end latency from user message to complete reply",
-    buckets=(0.5, 1, 2, 5, 10, 30, 60, 120, 300),
-    registry=REGISTRY,
-)
 
-# --- Model calls ---------------------------------------------------------------
-MODEL_CALLS_TOTAL = Counter(
-    "deerflow_model_calls_total",
-    "Model API invocations",
-    labelnames=["model", "status"],
-    registry=REGISTRY,
-)
-MODEL_LATENCY = Histogram(
-    "deerflow_model_latency_seconds",
-    "Model API round-trip latency",
-    buckets=(0.1, 0.5, 1, 2, 5, 10, 30, 60),
-    labelnames=["model"],
-    registry=REGISTRY,
-)
+def _inc(name: str, labels: dict[str, str] = None, value: float = 1):
+    key = ",".join(f'{k}="{v}"' for k, v in (labels or {}).items())
+    _counters[name][key] += value
 
-# --- Memory ----------------------------------------------------------------
-MEMORY_OPERATIONS_TOTAL = Counter(
-    "deerflow_memory_operations_total",
-    "Memory store operations",
-    labelnames=["operation", "status"],
-    registry=REGISTRY,
-)
 
-# --- Governance ----------------------------------------------------------------
-GOVERNANCE_DECISIONS_TOTAL = Counter(
-    "deerflow_governance_decisions_total",
-    "Governance middleware decisions",
-    labelnames=["decision"],
-    registry=REGISTRY,
-)
+def _set_gauge(name: str, value: float):
+    _gauges[name] = value
 
-# --- Channel ----------------------------------------------------------------
-CHANNEL_MESSAGES_TOTAL = Counter(
-    "deerflow_channel_messages_total",
-    "Messages received from IM channels",
-    labelnames=["channel", "direction"],
-    registry=REGISTRY,
-)
+
+def inc_conversations():
+    _inc("deerflow_conversations_total")
+
+
+def set_active_conversations(n: int):
+    _set_gauge("deerflow_conversations_active", n)
+
+
+def inc_message(role: str, status: str = "ok"):
+    _inc("deerflow_messages_total", {"role": role, "status": status})
+
+
+def inc_model_call(model: str, status: str = "ok"):
+    _inc("deerflow_model_calls_total", {"model": model, "status": status})
+
+
+def inc_memory_op(operation: str, status: str = "ok"):
+    _inc("deerflow_memory_operations_total", {"operation": operation, "status": status})
+
+
+def inc_governance_decision(decision: str):
+    _inc("deerflow_governance_decisions_total", {"decision": decision})
+
+
+def inc_channel_message(channel: str, direction: str = "inbound"):
+    _inc("deerflow_channel_messages_total", {"channel": channel, "direction": direction})
 
 
 @router.get("/metrics")
 async def prometheus_metrics() -> Response:
-    """Prometheus scrape endpoint (text format)."""
-    body = generate_metrics(REGISTRY)
+    """Prometheus scrape endpoint (text format v0.0.4)."""
+    lines = []
+
+    # Type declarations + counters
+    for name, label_map in _counters.items():
+        lines.append(f"# TYPE {name} counter")
+        for labels, value in label_map.items():
+            if labels:
+                lines.append(f"{name}{{{labels}}} {value}")
+            else:
+                lines.append(f"{name} {value}")
+
+    # Gauges
+    lines.append("# TYPE deerflow_conversations_active gauge")
+    lines.append(f"deerflow_conversations_active {_gauges.get('deerflow_conversations_active', 0)}")
+    lines.append("# TYPE deerflow_uptime_seconds gauge")
+    lines.append(f"deerflow_uptime_seconds {time.time() - _START_TIME:.0f}")
+    lines.append("# TYPE deerflow_process_info gauge")
+    lines.append(f'deerflow_process_info{{version="1.0",metrics="minimal"}} 1')
+
+    body = "\n".join(lines) + "\n"
     return Response(content=body, media_type="text/plain; version=0.0.4")
 
 
 @router.get("/metrics/json")
 async def json_metrics() -> dict[str, Any]:
     """Lightweight JSON summary for ad-hoc health checks."""
+    total_messages = sum(_counters.get("deerflow_messages_total", {}).values())
+    total_model_calls = sum(_counters.get("deerflow_model_calls_total", {}).values())
     return {
-        "conversations_active": CONVERSATIONS_ACTIVE._value.get()
-        if hasattr(CONVERSATIONS_ACTIVE, "_value")
-        else 0,
-        "messages_total": MESSAGES_TOTAL._value.get()
-        if hasattr(MESSAGES_TOTAL, "_value")
-        else 0,
-        "uptime_seconds": time.time() - _START_TIME,
+        "uptime_seconds": round(time.time() - _START_TIME),
+        "conversations_active": int(_gauges.get("deerflow_conversations_active", 0)),
+        "messages_total": int(total_messages),
+        "model_calls_total": int(total_model_calls),
     }
-
-
-_START_TIME = time.time()
