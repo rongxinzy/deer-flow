@@ -20,6 +20,7 @@ from app.gateway.config import get_gateway_config
 from app.gateway.csrf_middleware import CORS_EXPOSED_HEADERS, CSRFMiddleware, get_configured_cors_origins
 from app.gateway.deps import langgraph_runtime
 from app.gateway.health import READINESS_CHECKPOINTER_CONFIG_ATTR, readiness_payload
+from app.gateway.metrics import router as metrics_router
 from app.gateway.routers import (
     agents,
     artifacts,
@@ -1012,6 +1013,7 @@ This gateway provides runtime endpoints for agent runs plus custom endpoints for
     # Models API is mounted at /api/models
     from app.gateway.routers import managed_models
 
+    app.include_router(metrics_router)  # /metrics — unauthenticated for Prometheus
     app.include_router(managed_models.router)
     app.include_router(models.router)
 

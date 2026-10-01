@@ -33,6 +33,8 @@ from deerflow.runtime.user_context import reset_current_user, set_current_user
 # Paths that never require authentication.
 _PUBLIC_PATH_PREFIXES: tuple[str, ...] = (
     "/health",
+    # Prometheus scrapes /metrics unauthenticated (cluster-internal).
+    "/metrics",
     "/docs",
     "/redoc",
     "/openapi.json",
