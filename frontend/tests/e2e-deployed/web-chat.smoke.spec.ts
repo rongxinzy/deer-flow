@@ -13,7 +13,8 @@ import { expect, test } from "@playwright/test";
 const PORTAL = process.env.E2E_DEPLOYED_PORTAL ?? "http://127.0.0.1:30190";
 const EMPLOYEE = process.env.E2E_DEPLOYED_EMPLOYEE ?? "sales-helper";
 const USERNAME = process.env.E2E_PORTAL_USERNAME ?? "admin";
-const PASSWORD = process.env.E2E_PORTAL_PASSWORD ?? "change-this-admin-password";
+const PASSWORD =
+  process.env.E2E_PORTAL_PASSWORD ?? "change-this-admin-password";
 
 test("portal login → employee → chat round trip", async ({ page }) => {
   test.setTimeout(150_000);
@@ -34,9 +35,7 @@ test("portal login → employee → chat round trip", async ({ page }) => {
   await employeeButton.click();
 
   // 3. The chat UI loads a workspace with a composer.
-  const composer = page
-    .locator("textarea, [contenteditable='true']")
-    .first();
+  const composer = page.locator("textarea, [contenteditable='true']").first();
   await expect(composer).toBeVisible({ timeout: 60_000 });
 
   // 4. One deterministic round trip. The run goes through the platform

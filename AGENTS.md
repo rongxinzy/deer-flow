@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents (Claude Code, Codex, and others) when working with code in this repository. It is the source of truth; the sibling `CLAUDE.md` imports it via `@AGENTS.md`.
+AI agents follow this source of truth; `CLAUDE.md` imports `@AGENTS.md`.
 
 It is the **monorepo orientation layer**: it maps the whole repo and points to the
 module guides that own the depth. For anything inside a module, read that module's
@@ -240,6 +240,4 @@ These apply repo-wide; module guides own the module-specific detail.
 - **Don't edit `CLAUDE.md`** — it only contains `@AGENTS.md`. All agent guidance changes
   belong here in `AGENTS.md`; `CLAUDE.md` is a thin import shim.
 
-## 跨仓协作规范
-
-提交、PR 标题与说明、review、bug fix 验证遵循 [DEVOPS.md](DEVOPS.md)。本仓已有专项安全、设计与发布门继续执行。
+[DEVOPS.md](DEVOPS.md)
