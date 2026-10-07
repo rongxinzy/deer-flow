@@ -1,5 +1,7 @@
 # Contributing to DeerFlow
 
+For the `rongxinzy` fork, [DEVOPS.md](DEVOPS.md) defines the shared PR title, description, review, and bug-fix process. Existing module-specific safety, test, and AI disclosure requirements remain in effect.
+
 Thank you for your interest in contributing to DeerFlow! This guide will help you set up your development environment and understand our development workflow.
 
 ## Development Environment Setup

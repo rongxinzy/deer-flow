@@ -239,3 +239,7 @@ These apply repo-wide; module guides own the module-specific detail.
   `scripts/verify_versions.sh <ver>` to catch drift early. See [RELEASING.md](RELEASING.md).
 - **Don't edit `CLAUDE.md`** — it only contains `@AGENTS.md`. All agent guidance changes
   belong here in `AGENTS.md`; `CLAUDE.md` is a thin import shim.
+
+## 跨仓协作规范
+
+提交、PR 标题与说明、review、bug fix 验证遵循 [DEVOPS.md](DEVOPS.md)。本仓已有专项安全、设计与发布门继续执行。
