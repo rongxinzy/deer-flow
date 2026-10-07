@@ -5,6 +5,7 @@ dependency (prometheus_client is not in the runtime image's venv).
 Metrics are process-local counters; they reset on restart, which is
 standard for Prometheus scraping.
 """
+
 import time
 from collections import defaultdict
 from typing import Any
