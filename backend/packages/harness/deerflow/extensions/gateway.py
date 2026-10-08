@@ -36,6 +36,9 @@ _RouteMethods = frozenset[str] | None
 _RouteScopes = frozenset[str]
 _HOST_PUBLIC_PATH_PREFIXES = (
     "/health",
+    # The zero-dependency Prometheus endpoint is public in the auth
+    # middleware; the host gateway must let it through the same way.
+    "/metrics",
     "/docs",
     "/redoc",
     "/openapi.json",
