@@ -862,7 +862,10 @@ export function extractReasoningContentFromMessage(message: Message) {
           ? (part as { thinking?: unknown }).thinking
           : undefined,
       )
-      .filter((value): value is string => typeof value === "string" && value.length > 0);
+      .filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
     if (thinking.length > 0) {
       return thinking.join("\n\n");
     }

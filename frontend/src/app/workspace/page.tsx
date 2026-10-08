@@ -5,7 +5,9 @@ import { env } from "@/env";
 
 export default async function WorkspacePage({
   searchParams,
-}: Readonly<{ searchParams: Promise<Record<string, string | string[] | undefined>> }>) {
+}: Readonly<{
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}>) {
   // Preserve the query (the admin console's ?embed=1 must survive this
   // hop, or the framed app loses its embed chrome on landing).
   const params = new URLSearchParams();
@@ -16,7 +18,9 @@ export default async function WorkspacePage({
   }
   const query = params.toString();
   if (env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true") {
-    return redirect(`/workspace/chats/${DEMO_THREAD_IDS[0]}${query ? `?${query}` : ""}`);
+    return redirect(
+      `/workspace/chats/${DEMO_THREAD_IDS[0]}${query ? `?${query}` : ""}`,
+    );
   }
   return redirect(`/workspace/chats/new${query ? `?${query}` : ""}`);
 }

@@ -39,7 +39,8 @@ export function WorkspaceHeader({ className }: { className?: string }) {
           </div>
         ) : (
           <div className="flex items-center justify-between gap-2">
-            {isEmbedMode() ? null : env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY === "true" ? (
+            {isEmbedMode() ? null : env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY ===
+              "true" ? (
               <Link href="/" className="text-primary ml-2 font-serif">
                 知远
               </Link>

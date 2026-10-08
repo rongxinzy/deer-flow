@@ -5,6 +5,7 @@ dependency (prometheus_client is not in the runtime image's venv).
 Metrics are process-local counters; they reset on restart, which is
 standard for Prometheus scraping.
 """
+
 import time
 from collections import defaultdict
 from typing import Any
@@ -77,7 +78,7 @@ async def prometheus_metrics() -> Response:
     lines.append("# TYPE deerflow_uptime_seconds gauge")
     lines.append(f"deerflow_uptime_seconds {time.time() - _START_TIME:.0f}")
     lines.append("# TYPE deerflow_process_info gauge")
-    lines.append(f'deerflow_process_info{{version="1.0",metrics="minimal"}} 1')
+    lines.append('deerflow_process_info{version="1.0",metrics="minimal"} 1')
 
     body = "\n".join(lines) + "\n"
     return Response(content=body, media_type="text/plain; version=0.0.4")

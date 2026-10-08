@@ -81,7 +81,7 @@ test.describe("Notification settings", () => {
       .poll(() => page.evaluate(() => window.__deerflowNotifications ?? []))
       .toEqual([
         {
-          title: "DeerFlow",
+          title: "Zhiyuan",
           body: "This is a test notification.",
         },
       ]);
