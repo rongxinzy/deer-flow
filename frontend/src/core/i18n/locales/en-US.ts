@@ -499,6 +499,7 @@ export const enUS: Translations = {
   // Sidebar
   sidebar: {
     newChat: "New chat",
+    backToWorkbench: "Back to the workbench",
     chats: "Chats",
     channels: "Channels",
     recentChats: "Recent chats",
@@ -999,6 +1000,7 @@ export const enUS: Translations = {
     officialWebsite: "Zhiyuan's official website",
     githubTooltip: "Zhiyuan on GitHub",
     settingsAndMore: "Settings and more",
+    currentEmployee: "Current digital employee",
     visitGithub: "Zhiyuan on GitHub",
     reportIssue: "Report an issue",
     contactUs: "Contact us",
