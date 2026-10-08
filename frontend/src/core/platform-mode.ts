@@ -42,7 +42,12 @@ export function getPlatformChatURL() {
 export function getPlatformEmployeeName(): string | null {
   if (typeof document === "undefined") return null;
   const match = /(?:^|;\s*)de_employee=([^;]+)/.exec(document.cookie);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 /**

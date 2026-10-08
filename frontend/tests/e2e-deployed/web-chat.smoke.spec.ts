@@ -43,11 +43,13 @@ test("portal login → employee → chat round trip", async ({ page }) => {
 
   // 3b. Platform header context: the selected employee's display name (from
   // the portal's companion cookie) and the way back to the console workbench
-  // — derived from the current host, console NodePort 30196.
+  // — derived from the current host, console NodePort 30196. The link is
+  // located by href, not label: the chat UI follows the browser locale
+  // (en-US under Playwright), so the visible text is not stable.
   await expect(page.getByText(EMPLOYEE_DISPLAY).first()).toBeVisible({
     timeout: 15_000,
   });
-  const backToWorkbench = page.getByRole("link", { name: /返回工作台$/ });
+  const backToWorkbench = page.locator('a[href$="#/workbench"]');
   await expect(backToWorkbench).toBeVisible();
   await expect(backToWorkbench).toHaveAttribute(
     "href",

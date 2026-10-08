@@ -89,13 +89,15 @@ export function WorkspaceNavMenu() {
                     <Settings2Icon />
                     {t.common.settings}
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
                   {/* Upstream site/GitHub/support links are for the open-source
                       deployment only; platform users stay inside the product
                       (portal workbench + chat) and must not be routed to the
-                      upstream project's channels. */}
+                      upstream project's channels. The separator moves inside
+                      too — otherwise hiding the block leaves two adjacent
+                      separators between Settings and About. */}
                   {!isPlatformMode() && (
                     <>
+                      <DropdownMenuSeparator />
                       <a
                         href="https://deerflow.tech/"
                         target="_blank"
