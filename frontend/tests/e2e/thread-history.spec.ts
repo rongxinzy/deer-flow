@@ -371,7 +371,47 @@ test.describe("Thread history", () => {
     await expect
       .poll(() => latestPageRequestCount, { timeout: 15_000 })
       .toBeGreaterThan(latestPageRequestsBeforeSubmit);
-    await expect(page.getByText(followUpPrompt)).toBeVisible();
+    try {
+      await expect(page.getByText(followUpPrompt)).toBeVisible();
+    } catch (error) {
+      const snapshot = async () => ({
+        geometry: await scroller.evaluate((element) => ({
+          top: element.scrollTop,
+          height: element.scrollHeight,
+          viewport: element.clientHeight,
+        })),
+        rendered: await conversation
+          .locator("[data-message-group-index]")
+          .evaluateAll((rows) =>
+            rows.map((row) => ({
+              index: row.getAttribute("data-message-group-index"),
+              text: row.textContent?.slice(0, 100),
+            })),
+          ),
+        promptCount: await page.getByText(followUpPrompt).count(),
+      });
+      console.log(
+        "FOLLOWUP_DIAGNOSTIC_BEFORE",
+        JSON.stringify(await snapshot()),
+      );
+      await scroller.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        element.dispatchEvent(new Event("scroll"));
+      });
+      try {
+        await expect(page.getByText(followUpPrompt)).toBeVisible();
+        console.log(
+          "FOLLOWUP_DIAGNOSTIC_RECOVERED",
+          JSON.stringify(await snapshot()),
+        );
+      } catch {
+        console.log(
+          "FOLLOWUP_DIAGNOSTIC_STILL_MISSING",
+          JSON.stringify(await snapshot()),
+        );
+      }
+      throw error;
+    }
 
     let preservedDurationFound = false;
     for (let step = 0; step <= 12; step += 1) {
