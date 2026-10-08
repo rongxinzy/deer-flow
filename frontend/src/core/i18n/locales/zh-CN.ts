@@ -467,6 +467,7 @@ export const zhCN: Translations = {
   // Sidebar
   sidebar: {
     newChat: "新对话",
+    backToWorkbench: "返回工作台",
     chats: "对话",
     channels: "渠道",
     recentChats: "最近的对话",
@@ -934,6 +935,7 @@ export const zhCN: Translations = {
     officialWebsite: "访问 知远 官方网站",
     githubTooltip: "访问 知远 的 GitHub 仓库",
     settingsAndMore: "设置和更多",
+    currentEmployee: "当前数字员工",
     visitGithub: "在 GitHub 上查看 知远",
     reportIssue: "报告问题",
     contactUs: "联系我们",

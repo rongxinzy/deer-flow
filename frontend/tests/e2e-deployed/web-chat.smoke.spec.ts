@@ -8,12 +8,16 @@ import { expect, test } from "@playwright/test";
  * Env knobs (defaults target the local k3s dev stack):
  *   E2E_DEPLOYED_PORTAL   portal origin hosting the /chat entry page
  *   E2E_DEPLOYED_EMPLOYEE employee name to pick
+ *   E2E_DEPLOYED_EMPLOYEE_DISPLAY  its display name (header chip assertion)
  *   E2E_PORTAL_USERNAME / E2E_PORTAL_PASSWORD  AEP credentials
  */
 const PORTAL = process.env.E2E_DEPLOYED_PORTAL ?? "http://127.0.0.1:30190";
 const EMPLOYEE = process.env.E2E_DEPLOYED_EMPLOYEE ?? "sales-helper";
+const EMPLOYEE_DISPLAY =
+  process.env.E2E_DEPLOYED_EMPLOYEE_DISPLAY ?? "销售助理";
 const USERNAME = process.env.E2E_PORTAL_USERNAME ?? "admin";
-const PASSWORD = process.env.E2E_PORTAL_PASSWORD ?? "change-this-admin-password";
+const PASSWORD =
+  process.env.E2E_PORTAL_PASSWORD ?? "change-this-admin-password";
 
 test("portal login → employee → chat round trip", async ({ page }) => {
   test.setTimeout(150_000);
@@ -34,10 +38,21 @@ test("portal login → employee → chat round trip", async ({ page }) => {
   await employeeButton.click();
 
   // 3. The chat UI loads a workspace with a composer.
-  const composer = page
-    .locator("textarea, [contenteditable='true']")
-    .first();
+  const composer = page.locator("textarea, [contenteditable='true']").first();
   await expect(composer).toBeVisible({ timeout: 60_000 });
+
+  // 3b. Platform header context: the selected employee's display name (from
+  // the portal's companion cookie) and the way back to the console workbench
+  // — derived from the current host, console NodePort 30196.
+  await expect(page.getByText(EMPLOYEE_DISPLAY).first()).toBeVisible({
+    timeout: 15_000,
+  });
+  const backToWorkbench = page.getByRole("link", { name: /返回工作台$/ });
+  await expect(backToWorkbench).toBeVisible();
+  await expect(backToWorkbench).toHaveAttribute(
+    "href",
+    /:30196\/#\/workbench$/,
+  );
 
   // 4. One deterministic round trip. The run goes through the platform
   // prefix (/api/v1/employees/<name>/chat/...) — assert the stream route

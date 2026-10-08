@@ -399,6 +399,7 @@ export interface Translations {
   sidebar: {
     recentChats: string;
     newChat: string;
+    backToWorkbench: string;
     chats: string;
     demoChats: string;
     agents: string;
@@ -829,6 +830,7 @@ export interface Translations {
     officialWebsite: string;
     githubTooltip: string;
     settingsAndMore: string;
+    currentEmployee: string;
     visitGithub: string;
     reportIssue: string;
     contactUs: string;

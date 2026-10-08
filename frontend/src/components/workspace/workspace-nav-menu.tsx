@@ -26,6 +26,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
+import { isPlatformMode } from "@/core/platform-mode";
 
 import { GithubIcon } from "./github-icon";
 import { useSettingsDialog } from "./settings";
@@ -89,43 +90,51 @@ export function WorkspaceNavMenu() {
                     {t.common.settings}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <a
-                    href="https://deerflow.tech/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <GlobeIcon />
-                      {t.workspace.officialWebsite}
-                    </DropdownMenuItem>
-                  </a>
-                  <a
-                    href="https://github.com/bytedance/deer-flow"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <GithubIcon />
-                      {t.workspace.visitGithub}
-                    </DropdownMenuItem>
-                  </a>
-                  <DropdownMenuSeparator />
-                  <a
-                    href="https://github.com/bytedance/deer-flow/issues"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <DropdownMenuItem>
-                      <BugIcon />
-                      {t.workspace.reportIssue}
-                    </DropdownMenuItem>
-                  </a>
-                  <a href="mailto:support@deerflow.tech">
-                    <DropdownMenuItem>
-                      <MailIcon />
-                      {t.workspace.contactUs}
-                    </DropdownMenuItem>
-                  </a>
+                  {/* Upstream site/GitHub/support links are for the open-source
+                      deployment only; platform users stay inside the product
+                      (portal workbench + chat) and must not be routed to the
+                      upstream project's channels. */}
+                  {!isPlatformMode() && (
+                    <>
+                      <a
+                        href="https://deerflow.tech/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <DropdownMenuItem>
+                          <GlobeIcon />
+                          {t.workspace.officialWebsite}
+                        </DropdownMenuItem>
+                      </a>
+                      <a
+                        href="https://github.com/bytedance/deer-flow"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <DropdownMenuItem>
+                          <GithubIcon />
+                          {t.workspace.visitGithub}
+                        </DropdownMenuItem>
+                      </a>
+                      <DropdownMenuSeparator />
+                      <a
+                        href="https://github.com/bytedance/deer-flow/issues"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <DropdownMenuItem>
+                          <BugIcon />
+                          {t.workspace.reportIssue}
+                        </DropdownMenuItem>
+                      </a>
+                      <a href="mailto:support@deerflow.tech">
+                        <DropdownMenuItem>
+                          <MailIcon />
+                          {t.workspace.contactUs}
+                        </DropdownMenuItem>
+                      </a>
+                    </>
+                  )}
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem

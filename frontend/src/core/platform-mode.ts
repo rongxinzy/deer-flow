@@ -46,6 +46,38 @@ export function getPlatformEmployeeName(): string | null {
 }
 
 /**
+ * The selected employee's display name, from the portal's readable
+ * companion cookie (de_employee_display, URL-encoded). Absent for sessions
+ * created before the cookie existed — callers fall back to the technical
+ * name. Client only.
+ */
+export function getPlatformEmployeeDisplay(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = /(?:^|;\s*)de_employee_display=([^;]+)/.exec(document.cookie);
+  if (!match?.[1]) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The console workbench (员工工作台) this chat was entered from. The default
+ * derives from this app's own host (the console runs on the same host,
+ * NodePort 30196), so no address is baked into the image;
+ * NEXT_PUBLIC_PLATFORM_CONSOLE_URL overrides for split deployments.
+ */
+export function getPlatformConsoleURL(): string {
+  const configured = env.NEXT_PUBLIC_PLATFORM_CONSOLE_URL;
+  if (configured) return configured;
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:30196/#/workbench`;
+  }
+  return "";
+}
+
+/**
  * Absolute same-origin prefix routing API calls through the portal proxy:
  * `${prefix}/api/...` (REST) and `${prefix}/threads/...` (LangGraph SDK)
  * both land on the portal's /api/v1/employees/{name}/chat/{rest...} route,
