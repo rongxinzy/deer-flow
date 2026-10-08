@@ -1,7 +1,6 @@
 import { getPlatformChatPrefix, isPlatformMode } from "@/core/platform-mode";
 import { env } from "@/env";
 
-
 function getBaseOrigin() {
   if (typeof window !== "undefined") {
     return window.location.origin;
