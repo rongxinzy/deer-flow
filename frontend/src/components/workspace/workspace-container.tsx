@@ -1,9 +1,8 @@
 "use client";
 
-import { ArrowLeft, Bot } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   Breadcrumb,
@@ -15,15 +14,11 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
-import {
-  getPlatformConsoleURL,
-  getPlatformEmployeeDisplay,
-  getPlatformEmployeeName,
-  isPlatformMode,
-} from "@/core/platform-mode";
+import { isPlatformMode } from "@/core/platform-mode";
 import { cn } from "@/lib/utils";
 
 import { GithubIcon } from "./github-icon";
+import { PlatformHeaderActions } from "./platform-header-actions";
 import { Tooltip } from "./tooltip";
 // Workspace sections that have an index route (/workspace/<section>/page.tsx)
 // and can therefore be linked to from the breadcrumb.
@@ -123,47 +118,6 @@ export function WorkspaceHeader({
         )}
       </div>
     </header>
-  );
-}
-
-/**
- * Platform mode header context: which digital employee this chat belongs to
- * (the portal mirrors the display name into a readable cookie on selection)
- * and the way back to the console workbench. The upstream GitHub shortcut is
- * deliberately absent here — employees never leave the platform.
- */
-function PlatformHeaderActions() {
-  const { t } = useI18n();
-  // Cookie-derived values only exist client-side; render them after mount so
-  // the server and first client render agree (hydration-safe).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  const employee = mounted
-    ? (getPlatformEmployeeDisplay() ?? getPlatformEmployeeName())
-    : null;
-  const consoleURL = mounted ? getPlatformConsoleURL() : "";
-  return (
-    <div className="flex items-center gap-3">
-      {employee ? (
-        <Tooltip content={t.workspace.currentEmployee}>
-          <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
-            <Bot size={16} />
-            {employee}
-          </span>
-        </Tooltip>
-      ) : null}
-      {consoleURL ? (
-        <a
-          href={consoleURL}
-          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
-        >
-          <ArrowLeft size={14} />
-          {t.sidebar.backToWorkbench}
-        </a>
-      ) : null}
-    </div>
   );
 }
 

@@ -24,6 +24,7 @@ import {
   MESSAGE_LIST_DEFAULT_PADDING_BOTTOM,
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { PlatformHeaderActions } from "@/components/workspace/platform-header-actions";
 import {
   SidecarProvider,
   SidecarTrigger,
@@ -497,6 +498,7 @@ export default function ChatPage() {
                 <ExportTrigger threadId={threadId} />
                 <ThreadExtensionActions threadId={threadId} />
                 <ArtifactTrigger />
+                <PlatformHeaderActions />
               </div>
             </header>
             <main className="flex min-h-0 max-w-full grow flex-col">
