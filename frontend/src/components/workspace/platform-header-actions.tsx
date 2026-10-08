@@ -37,19 +37,19 @@ export function PlatformHeaderActions() {
     <div className="flex items-center gap-3">
       {employee ? (
         <Tooltip content={t.workspace.currentEmployee}>
-          <span className="text-muted-foreground flex items-center gap-1.5 text-sm font-normal">
-            <Bot size={16} />
-            {employee}
+          <span className="text-muted-foreground flex max-w-40 min-w-0 items-center gap-1.5 text-sm">
+            <Bot size={16} className="shrink-0" />
+            <span className="truncate">{employee}</span>
           </span>
         </Tooltip>
       ) : null}
       {consoleURL ? (
         <a
           href={consoleURL}
-          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm font-normal"
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm"
         >
-          <ArrowLeft size={14} />
-          {t.sidebar.backToWorkbench}
+          <ArrowLeft size={14} className="shrink-0" />
+          <span className="hidden sm:inline">{t.sidebar.backToWorkbench}</span>
         </a>
       ) : null}
     </div>
