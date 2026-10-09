@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents (Claude Code, Codex, and others) when working with code in this repository. It is the source of truth; the sibling `CLAUDE.md` imports it via `@AGENTS.md`.
+AI agents follow this source of truth; `CLAUDE.md` imports `@AGENTS.md`.
 
 It is the **monorepo orientation layer**: it maps the whole repo and points to the
 module guides that own the depth. For anything inside a module, read that module's
@@ -239,3 +239,5 @@ These apply repo-wide; module guides own the module-specific detail.
   `scripts/verify_versions.sh <ver>` to catch drift early. See [RELEASING.md](RELEASING.md).
 - **Don't edit `CLAUDE.md`** — it only contains `@AGENTS.md`. All agent guidance changes
   belong here in `AGENTS.md`; `CLAUDE.md` is a thin import shim.
+
+[DEVOPS.md](DEVOPS.md)
