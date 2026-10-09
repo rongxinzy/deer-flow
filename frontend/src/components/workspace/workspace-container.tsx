@@ -14,9 +14,11 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useI18n } from "@/core/i18n/hooks";
+import { isPlatformMode } from "@/core/platform-mode";
 import { cn } from "@/lib/utils";
 
 import { GithubIcon } from "./github-icon";
+import { PlatformHeaderActions } from "./platform-header-actions";
 import { Tooltip } from "./tooltip";
 // Workspace sections that have an index route (/workspace/<section>/page.tsx)
 // and can therefore be linked to from the breadcrumb.
@@ -100,16 +102,20 @@ export function WorkspaceHeader({
         </Breadcrumb>
       </div>
       <div className="pr-4">
-        <Tooltip content={t.workspace.githubTooltip}>
-          <a
-            href="https://github.com/bytedance/deer-flow"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="opacity-75 transition hover:opacity-100"
-          >
-            <GithubIcon className="size-6" />
-          </a>
-        </Tooltip>
+        {isPlatformMode() ? (
+          <PlatformHeaderActions />
+        ) : (
+          <Tooltip content={t.workspace.githubTooltip}>
+            <a
+              href="https://github.com/bytedance/deer-flow"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="opacity-75 transition hover:opacity-100"
+            >
+              <GithubIcon className="size-6" />
+            </a>
+          </Tooltip>
+        )}
       </div>
     </header>
   );

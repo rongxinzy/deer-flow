@@ -384,9 +384,11 @@ def test_context_preserves_existing_fixed_query_behavior(
             "limit": 4,
             "filter": None,
             "session_id": _session_id("alice", "research", "thread-1"),
+            # OpenViking >= 0.4 rejects the uid-less "viking://user/..."
+            # spelling at the request boundary (session.py).
             "target_uri": [
-                "viking://user/memories",
-                "viking://user/peers/research/memories",
+                "viking://~/memories",
+                "viking://~/peers/research/memories",
             ],
             "search_mode": "search",
         }
@@ -414,8 +416,8 @@ def test_context_without_thread_uses_existing_find_path(
             "filter": None,
             "session_id": None,
             "target_uri": [
-                "viking://user/memories",
-                "viking://user/peers/research/memories",
+                "viking://~/memories",
+                "viking://~/peers/research/memories",
             ],
             "search_mode": "find",
         }
