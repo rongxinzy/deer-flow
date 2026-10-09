@@ -1,6 +1,5 @@
-<!-- Reference a related issue with #123. Use Fixes / Closes / Resolves to
-     auto-close it on merge. Delete this line if the PR doesn't reference an issue. -->
-Fixes #
+<!-- Title: type(scope): lowercase summary. See DEVOPS.md. If this PR closes an
+     issue, add Fixes #123 only with the real issue number. -->
 
 ## Why
 
@@ -73,4 +72,3 @@ Fixes #
      "AI wrote tests, I wrote the impl". A prompt or conversation link is great too. -->
 
 - [ ] I've read and understand every line of this change and take responsibility for it — it's not unreviewed AI output.
-
