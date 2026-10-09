@@ -20,7 +20,7 @@
 # ============================================================================
 # Bump this number when the config schema changes.
 # Run `make config-upgrade` to merge new fields into your local config.yaml.
-config_version: 50
+config_version: 51
 
 # Optional operator-owned literal prompt extensions (see CONFIGURATION.md):
 # lead_prompt_overlay:
@@ -28,6 +28,17 @@ config_version: 50
 #   append: "End reports with a concise decision summary."
 # Subagents: subagents.agents.<name>.prompt_overlay.{prepend,append}
 # DeerMem: memory.backend_config.{prompt_prepend,prompt_append}
+# Optional deployment-specific identity labels for the default lead agent.
+# These are model data, not instructions. Supply verified business metadata.
+# lead_identity:
+#   deployment_id: enterprise-a
+#   deployment_name: Example Enterprise
+#   employee_name: Research Assistant
+#   team_id: research
+#   team_name: Research Department
+#   owner_id: user-123
+#   owner_name: Jane
+#   purpose: Help the research department summarize evidence.
 
 # Optional per-model request pacing (inside a models[] entry):
 # request_admission:

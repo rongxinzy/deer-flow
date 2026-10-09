@@ -26,6 +26,7 @@ from deerflow.config.file_signature import read_config_with_signature as _read_c
 from deerflow.config.guardrails_config import GuardrailsConfig, load_guardrails_config_from_dict
 from deerflow.config.input_polish_config import InputPolishConfig
 from deerflow.config.knowledge_base_config import KnowledgeBaseConfig
+from deerflow.config.lead_identity import LeadIdentity
 from deerflow.config.loop_detection_config import LoopDetectionConfig
 from deerflow.config.mcp_tasks_config import McpTasksConfig
 from deerflow.config.memory_config import MemoryConfig, load_memory_config_from_dict
@@ -195,6 +196,7 @@ class AppConfig(BaseModel):
     """Config for the DeerFlow application"""
 
     lead_prompt_overlay: PromptOverlay = Field(default_factory=PromptOverlay, description="Operator-owned literal prepend/append around the assembled lead-agent system prompt")
+    lead_identity: LeadIdentity | None = Field(default=None, description="Deployment-scoped lead identity labels, injected as untrusted model data")
 
     log_level: str = Field(
         default="info",
@@ -460,7 +462,7 @@ class AppConfig(BaseModel):
         # Check config version before processing
         cls._check_config_version(config_data, resolved_path)
 
-        config_data = cls.resolve_env_variables(config_data)
+        config_data = cls._resolve_config_env(config_data)
         cls._apply_database_defaults(config_data)
 
         # Load circuit_breaker config if present
@@ -618,6 +620,21 @@ class AppConfig(BaseModel):
         elif isinstance(config, list):
             return [cls.resolve_env_variables(item) for item in config]
         return config
+
+    @classmethod
+    def _resolve_config_env(cls, config_data: dict[str, Any]) -> dict[str, Any]:
+        """Keep user-influenceable identity labels literal during env expansion.
+
+        Business labels are written into config.yaml by an operator and may
+        begin with ``$SECRET_NAME``. Expanding them would disclose process
+        credentials in a model request. All other config keeps its existing
+        environment-reference behavior.
+        """
+        identity = config_data.get("lead_identity")
+        resolved = cls.resolve_env_variables({key: value for key, value in config_data.items() if key != "lead_identity"})
+        if "lead_identity" in config_data:
+            resolved["lead_identity"] = identity
+        return resolved
 
     @model_validator(mode="after")
     def _build_name_indexes(self) -> "AppConfig":

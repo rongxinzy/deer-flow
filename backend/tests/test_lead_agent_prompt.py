@@ -717,7 +717,8 @@ def test_system_prompt_template_preserves_placeholders():
     """
     template = prompt_module.SYSTEM_PROMPT_TEMPLATE
     for ph in (
-        "{agent_name}",
+        "{role_statement}",
+        "{identity_data_note}",
         "{soul}",
         "{self_update_section}",
         "{subagent_thinking}",
