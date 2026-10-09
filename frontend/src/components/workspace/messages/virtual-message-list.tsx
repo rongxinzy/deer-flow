@@ -243,10 +243,11 @@ export const VirtualMessageList = forwardRef<
       positionedInitialVirtualWindowRef.current = false;
     }
     if (groups.length > previousCountRef.current && isAtBottom) {
-      void scrollToBottom({
-        animation: "instant",
-        preserveScrollPosition: true,
-      });
+      // The public isAtBottom also includes the near-bottom geometry. A
+      // return-to-bottom scroll during row measurement can leave the
+      // library's internal follow lock off, so restore it here rather than
+      // asking preserveScrollPosition to keep that stale lock.
+      void scrollToBottom({ animation: "instant" });
     }
     previousCountRef.current = groups.length;
     return () => {
