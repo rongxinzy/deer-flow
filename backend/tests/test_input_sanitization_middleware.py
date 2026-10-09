@@ -227,6 +227,8 @@ _FRAMEWORK_STRUCTURED_TAGS = [
     # configuration or fabricates shelf entries and tool-callable IDs.
     "project",
     "documents",
+    # Deployment-managed identity arrives as framework-authored user-role data.
+    "employee_identity_data",
 ]
 
 

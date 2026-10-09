@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
 import os
 import posixpath
@@ -414,12 +415,17 @@ class DynamicContextMiddleware(AgentMiddleware):
         policies must not share a fingerprint.
         """
         max_entries, max_bytes = self._shelf_index_limits()
-        return {
+        policy = {
             "current_date_timezone": _effective_date_timezone_name(),
             "memory_enabled": self._memory_enabled,
             "shelf_index_max_entries": max_entries,
             "shelf_index_max_bytes": max_bytes,
         }
+        identity = getattr(self._app_config, "lead_identity", None)
+        if identity is not None:
+            encoded = json.dumps(identity.model_dump(), ensure_ascii=False, sort_keys=True).encode("utf-8")
+            policy["lead_identity_sha256"] = hashlib.sha256(encoded).hexdigest()
+        return policy
 
     def _build_full_reminder(self, runtime: Runtime | None = None, *, query: str | None = None) -> tuple[str, str | None]:
         """Return (date_reminder, memory_block | None).
@@ -753,6 +759,28 @@ class DynamicContextMiddleware(AgentMiddleware):
         message = build_project_context_message(block, run_id)
         return request.override(messages=[*messages[:index], message, *messages[index:]]), project_block, documents_block
 
+    def _assemble_identity_request(self, request: ModelRequest) -> ModelRequest:
+        """Supply business-owned labels as transient user-role data, not system authority."""
+        identity = getattr(self._app_config, "lead_identity", None)
+        if identity is None:
+            return request
+        messages = list(getattr(request, "messages", None) or [])
+        # Keep labels inside their data boundary even when an applicant puts
+        # XML-like delimiters in a display name or purpose.
+        labels = json.dumps(identity.model_dump(), ensure_ascii=False, sort_keys=True).replace("<", "\\u003c").replace(">", "\\u003e")
+        content = "<employee_identity_data>\n" + labels + "\n</employee_identity_data>"
+        message = HumanMessage(
+            content=content,
+            id="__deerflow_lead_identity__",
+            additional_kwargs={
+                "hide_from_ui": True,
+                "deerflow_lead_identity": True,
+                **provenance_kwargs(ContentKind.MIDDLEWARE_INJECTION, "dynamic_context_identity"),
+            },
+        )
+        index = project_context_insertion_index(messages, getattr(request, "runtime", None))
+        return request.override(messages=[*messages[:index], message, *messages[index:]])
+
     def _record_context_event(self, messages: list, runtime: Runtime | None, project_block: str | None, documents_block: str | None) -> None:
         """Emit the run's single ``context:memory`` audit event, when due.
 
@@ -791,6 +819,7 @@ class DynamicContextMiddleware(AgentMiddleware):
     @override
     def wrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], ModelResponse]) -> ModelCallResult:
         request, project_block, documents_block = self._assemble_project_request(request)
+        request = self._assemble_identity_request(request)
         response = handler(request)
         # Record only after the call succeeded: a failed assembly must not
         # claim the context was delivered.
@@ -801,6 +830,7 @@ class DynamicContextMiddleware(AgentMiddleware):
     async def awrap_model_call(self, request: ModelRequest, handler: Callable[[ModelRequest], Awaitable[ModelResponse]]) -> ModelCallResult:
         # Pure in-memory rendering: no I/O, so it stays on the event loop.
         request, project_block, documents_block = self._assemble_project_request(request)
+        request = self._assemble_identity_request(request)
         response = await handler(request)
         self._record_context_event(request.messages, getattr(request, "runtime", None), project_block, documents_block)
         return response

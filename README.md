@@ -11,6 +11,11 @@ English | [中文](./README_zh.md) | [日本語](./README_ja.md) | [Français](.
 
 DeerFlow (**D**eep **E**xploration and **E**fficient **R**esearch **Flow**) is an open-source **super agent harness** that orchestrates **sub-agents**, **memory**, and **sandboxes** to do almost anything — powered by **extensible skills**.
 
+Deployments can configure `lead_identity` in `config.yaml` to identify the
+default lead agent with an enterprise instance, employee, department, and owner.
+The labels are supplied as model data and do not change tool authorization;
+see [Configuration Guide](backend/docs/CONFIGURATION.md#prompt-overlays).
+
 https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
 
 > [!NOTE]
