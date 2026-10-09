@@ -1,12 +1,5 @@
 ### Agent System
 
-`AppConfig.lead_identity` is deployment-scoped business metadata. The default
-lead role becomes a generic enterprise digital employee when configured; the
-identity labels are inserted into each model request as transient HumanMessage
-data by `DynamicContextMiddleware`, never interpolated into system authority.
-The middleware's release policy fingerprints the data snapshot. Custom agents
-retain their own role and SOUL.md.
-
 `AppConfig.lead_prompt_overlay` wraps the fully rendered lead system prompt with
 literal operator prepend/append text. Do not template-format these extensions
 or source them from run context. The graph and assembly descriptor must see the
