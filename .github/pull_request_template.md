@@ -1,26 +1,74 @@
-<!-- title: type(scope): summary，例如 fix(portal): preserve omitted fields -->
-<!-- 遵守根目录 DEVOPS.md；删除不适用的提示，不保留空占位符。 -->
+<!-- Title: type(scope): lowercase summary. See DEVOPS.md. If this PR closes an
+     issue, add Fixes #123 only with the real issue number. -->
 
-# PR 说明
+## Why
 
-## 改动
+<!-- Why are you opening this PR? Cover two things:
+       - The trigger — what made you write this? A bug you hit, a feature you need,
+         tech debt, or a prod issue?
+       - The pain being addressed — user-facing problem, or what it unblocks.
+     For non-trivial features, please open an issue/discussion first to align on
+     scope before writing code. -->
 
-<!-- 哪个场景的行为发生变化，影响谁。 -->
 
-## 原因
+## What changed
 
-<!-- bug fix：触发条件、修复前行为、原因、修复后行为。已有 issue 才写 Fixes #123。 -->
+<!-- Describe the change from a user's / caller's perspective, not as a code diff. e.g.:
+       - "Settings now has a 'Custom endpoint' field, off by default"
+       - "Backend /api/chat gains a `stream` flag, defaults to false"
+       - "Default model changed from X to Y — existing users notice on first run" -->
 
-## 验证
 
-<!-- 实际命令/手工步骤与结果；回归测试或无法自动化的原因；未运行/阻塞项。 -->
-<!-- UI：按本仓设计规范附截图/录屏。协议/数据/发布：必要时说明兼容、迁移与回滚。 -->
-<!-- 合并前需一次正式 GitHub approval；独立 AI 可辅助 review，作者自审不替代 approval。 -->
+## Surface area
+
+<!-- Check every box that applies. Reviewers use this to scope the review. -->
+
+- [ ] **Frontend UI** — page / component / setting / interaction under `frontend/`
+- [ ] **Backend API** — endpoint / SSE event / request-response shape under `backend/app`
+- [ ] **Agents / LangGraph** — agent node, graph wiring, `langgraph.json`, or prompt change
+  - Prompt-layer self-check: for every data source in the new text, what is its trust level, and which channel should it ride? Model-supplied or user-influenceable values belong on the untrusted, sanitized data channel (e.g. the task `HumanMessage`) — never interpolated into framework-owned system text, even neutralized.
+- [ ] **Sandbox** — `docker/` or sandboxed execution
+- [ ] **Skills** — change under `skills/`
+- [ ] **Dependencies** — new/upgraded entry in `backend/pyproject.toml` or `frontend/package.json` (say what it buys us)
+- [ ] **Default behavior change** — changes existing behavior without the user opting in (default model, default setting, data shape)
+- [ ] **Docs / tests / CI only** — no runtime behavior change
+
+
+## Screenshots / Recording
+
+<!-- If you checked "Frontend UI", attach screenshots showing the entry point —
+     where users discover the change — not just the feature in isolation.
+     Before/after is best for behavior changes. Short GIFs welcome. -->
+
+
+## Bug fix verification
+
+<!-- Skip (delete) this section if this PR is not a bug fix.
+
+     Bugs should be encoded as a failing test that goes red before the fix.
+     Confirm:
+       - Test path that reproduces the bug:
+       - Did it go red on `main` and green on this branch? (yes / no)
+       - If a red test wasn't cheap to write, explain why and what you did instead. -->
+
+
+## Validation
+
+<!-- What you actually ran. Run at least the checks for the area you changed:
+       Backend:   cd backend  && make lint && make test
+       Frontend:  cd frontend && pnpm format && pnpm lint && pnpm typecheck && BETTER_AUTH_SECRET=local-dev-secret pnpm build && make test
+       Frontend E2E (if you touched frontend/): cd frontend && make test-e2e -->
+
 
 ## AI assistance
 
-<!-- 本仓既有要求：工具（或 none）、使用方式，以及人工已阅读、理解并承担责任的确认。 -->
+<!-- DeerFlow is an AI project — most PRs here use AI coding tools, and that's
+     welcome. Disclosing it just helps reviewers calibrate how closely to read the
+     diff. Please fill all three; don't delete the section. -->
 
-Tool(s) used:
-How used:
-Human responsibility confirmation:
+**Tool(s) used:** <!-- e.g. Claude Code, Cursor, GitHub Copilot, Codex, Windsurf, or "none" -->
+
+**How you used it:** <!-- e.g. "generated the module from a spec", "autocomplete only",
+     "AI wrote tests, I wrote the impl". A prompt or conversation link is great too. -->
+
+- [ ] I've read and understand every line of this change and take responsibility for it — it's not unreviewed AI output.
