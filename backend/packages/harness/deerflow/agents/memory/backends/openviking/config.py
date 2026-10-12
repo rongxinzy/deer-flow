@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 _SAFE_PEER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 GENERATED_PEER_PREFIX = "df-agent-"
+# Curated shared bucket lives in a namespace no requester peer can occupy, so a
+# requester can never read another requester's private bucket through it.
+SHARED_PEER_PREFIX = "df-shared-"
 _REMOVED_CUSTOM_HTTP_FIELDS = frozenset(
     {
         "connect_timeout_seconds",
@@ -40,6 +43,14 @@ class OpenVikingConfig:
     api_key: str = field(repr=False)
     api_key_env: str
     default_peer_id: str
+    # "instance" (default): memory is scoped to the agent peer inside the
+    # credential-bound owner, as shipped. "requester": memory is additionally
+    # partitioned per requesting user, so several humans sharing one employee
+    # instance stop sharing one memory space.
+    memory_scope: Literal["instance", "requester"]
+    # Optional curated shared bucket, read in addition to the requester's own
+    # memory when memory_scope="requester". Empty means personal memory only.
+    shared_peer_id: str
     timeout_seconds: float
     search_top_k: int
     score_threshold: float | None
@@ -81,6 +92,8 @@ class OpenVikingConfig:
             api_key=os.environ.get(api_key_env, "").strip(),
             api_key_env=api_key_env,
             default_peer_id=str(cfg.pop("default_peer_id", "deerflow")).strip(),
+            memory_scope=str(cfg.pop("memory_scope", "instance")).strip().lower(),  # type: ignore[arg-type]
+            shared_peer_id=str(cfg.pop("shared_peer_id", "")).strip(),
             timeout_seconds=_number(cfg, "timeout_seconds", 30.0, float),
             search_top_k=_number(retrieval, "top_k", 8, int),
             score_threshold=_optional_float(retrieval.pop("score_threshold", None), "score_threshold"),
@@ -128,6 +141,15 @@ class OpenVikingConfig:
             raise ValueError("OpenViking default_peer_id must start with a lowercase letter or digit and contain at most 64 lowercase letters, digits, '_' or '-'")
         if self.default_peer_id.startswith(GENERATED_PEER_PREFIX):
             raise ValueError(f"OpenViking default_peer_id must not start with the reserved prefix {GENERATED_PEER_PREFIX!r}")
+        if self.memory_scope not in {"instance", "requester"}:
+            raise ValueError("OpenViking memory_scope must be 'instance' or 'requester'")
+        if self.shared_peer_id:
+            if not is_safe_peer_id(self.shared_peer_id):
+                raise ValueError("OpenViking shared_peer_id must start with a lowercase letter or digit and contain at most 64 lowercase letters, digits, '_' or '-'")
+            if not self.shared_peer_id.startswith(SHARED_PEER_PREFIX):
+                raise ValueError(f"OpenViking shared_peer_id must use the reserved prefix {SHARED_PEER_PREFIX!r} so a requester peer can never alias the shared bucket")
+        if self.memory_scope == "instance" and self.shared_peer_id:
+            raise ValueError("OpenViking shared_peer_id is only used when memory_scope='requester'")
         if not isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
             raise ValueError("OpenViking timeout_seconds must be a finite value > 0")
         if not 1 <= self.search_top_k <= 100:

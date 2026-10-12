@@ -26,11 +26,21 @@ from .session import (
     _matching_prefix_count,
     _memory_target_uris,
     _message_signature,
+    _requester_peer_id,
     _session_id,
     _string_list,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class RequesterScopeError(MemoryManagerError):
+    """Requester-scoped memory cannot identify the requester.
+
+    Distinct from the credential-sharing refusal: this one may be swallowed by
+    the configured read/write failure policy (fail closed to "no memory"),
+    while a credential mismatch must always surface.
+    """
 
 
 class OpenVikingMemoryManager(MemoryManager):
@@ -171,9 +181,18 @@ class OpenVikingMemoryManager(MemoryManager):
         if not self._begin_operation():
             return ""
         try:
-            peer_id = self._resolve_read_scope(user_id, agent_name)
+            try:
+                peer_id = self._resolve_read_scope(user_id, agent_name)
+            except RequesterScopeError as exc:
+                if self._config.read_failure_policy == "raise":
+                    raise
+                logger.warning(
+                    "OpenViking memory scope unresolved; continuing without injected memory: %s",
+                    exc,
+                )
+                return ""
             retriever = copy.copy(self._retriever)
-            retriever.target_uri = _memory_target_uris(peer_id)
+            retriever.target_uri = self._memory_target_uris_for(peer_id)
             if thread_id:
                 retriever.search_mode = "search"
                 retriever.session_id = _session_id(
@@ -227,9 +246,18 @@ class OpenVikingMemoryManager(MemoryManager):
         if not query.strip() or not self._begin_operation():
             return []
         try:
-            peer_id = self._resolve_read_scope(user_id, agent_name)
+            try:
+                peer_id = self._resolve_read_scope(user_id, agent_name)
+            except RequesterScopeError as exc:
+                if self._config.read_failure_policy == "raise":
+                    raise
+                logger.warning(
+                    "OpenViking memory scope unresolved; returning no results: %s",
+                    exc,
+                )
+                return []
             retriever = copy.copy(self._retriever)
-            retriever.target_uri = _memory_target_uris(peer_id)
+            retriever.target_uri = self._memory_target_uris_for(peer_id)
             retriever.search_mode = "find"
             retriever.session_id = None
             retriever.limit = max(1, min(int(top_k), 100))
@@ -334,7 +362,16 @@ class OpenVikingMemoryManager(MemoryManager):
         try:
             if not thread_id:
                 raise ValueError("OpenViking memory write requires thread_id")
-            peer_id = self._resolve_scope(user_id, agent_name)
+            try:
+                peer_id = self._resolve_scope(user_id, agent_name)
+            except RequesterScopeError as exc:
+                if self._config.write_failure_policy == "raise":
+                    raise
+                logger.warning(
+                    "OpenViking memory write skipped; requester scope unresolved: %s",
+                    exc,
+                )
+                return
             session_id = _session_id(
                 self._config.owner_user_id,
                 peer_id,
@@ -458,6 +495,16 @@ class OpenVikingMemoryManager(MemoryManager):
         user_id: str | None,
         agent_name: str | None,
     ) -> str:
+        if self._config.memory_scope == "requester":
+            # Requester-scoped memory: the requesting user owns the peer
+            # namespace inside the credential-bound employee, so several
+            # humans on one instance never share one memory space. An
+            # unresolved requester fails closed instead of falling back to a
+            # shared bucket.
+            requester = str(user_id or "").strip()
+            if not requester or requester == "default":
+                raise RequesterScopeError("OpenViking requester-scoped memory requires an authenticated requester; refusing to fall back to a shared memory space.")
+            return _requester_peer_id(requester)
         resolved_user = str(user_id or "default")
         if resolved_user != self._config.owner_user_id:
             if self._config.single_tenant_instance:
@@ -487,6 +534,15 @@ class OpenVikingMemoryManager(MemoryManager):
             if self._config.read_failure_policy == "raise":
                 raise MemoryReadError(str(exc)) from exc
             raise
+
+    def _memory_target_uris_for(self, peer_id: str) -> list[str]:
+        """Memory roots to read for the active scope mode."""
+
+        return _memory_target_uris(
+            peer_id,
+            shared_peer_id=self._config.shared_peer_id,
+            requester_scoped=self._config.memory_scope == "requester",
+        )
 
     def _actor_peer_scope(
         self,
