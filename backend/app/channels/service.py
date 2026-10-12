@@ -171,7 +171,7 @@ class ChannelService:
         self._watchdog_task: asyncio.Task[None] | None = None
         self._watchdog_failures: dict[str, int] = {}
         self._watchdog_ever_connected: dict[str, bool] = {}
-        self._watchdog_interval_seconds = _resolve_non_negative_float(config, "watchdog_interval_seconds", DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS) or DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS
+        self._watchdog_interval_seconds = _resolve_non_negative_float(config, "watchdog_interval_seconds", DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS)
         self._watchdog_failure_threshold = _resolve_positive_int(config, "watchdog_failure_threshold", DEFAULT_CHANNEL_WATCHDOG_FAILURE_THRESHOLD)
 
     @classmethod
@@ -332,6 +332,9 @@ class ChannelService:
     # -- watchdog ----------------------------------------------------------
 
     def _start_channel_watchdog(self) -> None:
+        if self._watchdog_interval_seconds <= 0:
+            logger.info("Channel watchdog disabled (watchdog_interval_seconds <= 0)")
+            return
         if self._watchdog_task is not None and not self._watchdog_task.done():
             return
         self._watchdog_task = asyncio.create_task(self._channel_watchdog())
@@ -365,6 +368,11 @@ class ChannelService:
             channel_config = self._config.get(name)
             if not isinstance(channel_config, dict) or not channel_config.get("enabled", False):
                 continue
+            connection_signal = getattr(type(channel), "is_connected", None)
+            if connection_signal is None or connection_signal is Channel.is_connected:
+                # This channel cannot tell "connected" from "process alive", so
+                # restarting on is_connected would just fight the SDK's retry.
+                continue
             if channel.is_connected:
                 self._watchdog_ever_connected[name] = True
                 self._watchdog_failures.pop(name, None)
@@ -378,16 +386,22 @@ class ChannelService:
                 self._watchdog_failures[name] = failures
                 continue
             self._watchdog_failures.pop(name, None)
-            self._watchdog_ever_connected[name] = False
             logger.warning("Channel %s lost its connection and did not recover; restarting", name)
             # Serialize with ensure_channel_ready: both stop and start channels,
             # so sharing the per-channel lock keeps them from racing.
             lock = self._readiness_locks.setdefault(name, asyncio.Lock())
+            restarted = False
             async with lock:
                 try:
-                    await self.restart_channel(name)
+                    restarted = await self.restart_channel(name)
                 except Exception:
                     logger.exception("Channel watchdog failed to restart %s", name)
+            if restarted:
+                # Only forget the "has connected" flag once the restart landed: a
+                # deferred or failed restart keeps the channel eligible next round.
+                self._watchdog_ever_connected[name] = False
+            else:
+                logger.warning("Channel watchdog could not restart %s yet; will retry", name)
 
     def _load_channel_config(self, name: str) -> dict[str, Any] | None:
         """Load the latest config for a specific channel from disk.

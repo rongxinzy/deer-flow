@@ -11708,6 +11708,17 @@ def test_streaming_chat_never_publishes_hidden_memory_context(monkeypatch):
     _run(go())
 
 
+class _WatchdogChannel:
+    """A channel that reports a real connection state, as feishu does."""
+
+    def __init__(self, connected: bool) -> None:
+        self.connected = connected
+
+    @property
+    def is_connected(self) -> bool:
+        return self.connected
+
+
 def test_feishu_is_connected_tracks_the_lark_socket():
     from app.channels.feishu import FeishuChannel
 
@@ -11716,8 +11727,8 @@ def test_feishu_is_connected_tracks_the_lark_socket():
         channel._running = True
         channel._thread = SimpleNamespace(is_alive=lambda: True)
 
-        # Before the ws client exists there is nothing better than liveness.
-        assert channel.is_connected is True
+        # No ws client yet: nothing is connected.
+        assert channel.is_connected is False
 
         channel._ws_client = SimpleNamespace(_conn=None)
         assert channel.is_running is True
@@ -11738,7 +11749,7 @@ def test_channel_watchdog_restarts_a_channel_that_dropped():
     async def go():
         service = ChannelService(channels_config={})
         service._config = {"feishu": {"enabled": True}}
-        service._channels = {"feishu": SimpleNamespace(is_connected=False)}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
         service._watchdog_ever_connected = {"feishu": True}
         service._watchdog_failure_threshold = 2
 
@@ -11754,6 +11765,33 @@ def test_channel_watchdog_restarts_a_channel_that_dropped():
         assert restarted == [], "a single missed round must not restart the channel"
         await service._watchdog_round()
         assert restarted == ["feishu"]
+        assert service._watchdog_ever_connected["feishu"] is False
+
+    _run(go())
+
+
+def test_channel_watchdog_retries_after_a_deferred_restart():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
+        service._watchdog_ever_connected = {"feishu": True}
+        service._watchdog_failure_threshold = 1
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return False
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        await service._watchdog_round()
+        assert restarted == ["feishu", "feishu"], "a deferred restart must stay eligible"
+        assert service._watchdog_ever_connected["feishu"] is True
 
     _run(go())
 
@@ -11764,7 +11802,7 @@ def test_channel_watchdog_leaves_never_connected_channels_alone():
     async def go():
         service = ChannelService(channels_config={})
         service._config = {"feishu": {"enabled": True}}
-        service._channels = {"feishu": SimpleNamespace(is_connected=False)}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
         service._watchdog_failure_threshold = 1
 
         restarted: list[str] = []
@@ -11782,13 +11820,39 @@ def test_channel_watchdog_leaves_never_connected_channels_alone():
     _run(go())
 
 
+def test_channel_watchdog_skips_channels_without_a_connection_signal():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        # A channel whose is_connected is only the base definition: no signal.
+        service._channels = {"feishu": SimpleNamespace(is_connected=False)}
+        service._watchdog_ever_connected = {"feishu": True}
+        service._watchdog_failure_threshold = 1
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        for _ in range(2):
+            await service._watchdog_round()
+        assert restarted == [], "the watchdog only acts on channels with a real signal"
+
+    _run(go())
+
+
 def test_channel_watchdog_resets_after_a_healthy_round():
     from app.channels.service import ChannelService
 
     async def go():
         service = ChannelService(channels_config={})
         service._config = {"feishu": {"enabled": True}}
-        channel = SimpleNamespace(is_connected=False)
+        channel = _WatchdogChannel(connected=False)
         service._channels = {"feishu": channel}
         service._watchdog_failure_threshold = 2
         service._watchdog_ever_connected = {"feishu": True}
@@ -11802,9 +11866,9 @@ def test_channel_watchdog_resets_after_a_healthy_round():
         service.restart_channel = fake_restart
 
         await service._watchdog_round()
-        channel.is_connected = True
+        channel.connected = True
         await service._watchdog_round()
-        channel.is_connected = False
+        channel.connected = False
         await service._watchdog_round()
         assert restarted == [], "a healthy round must clear the failure count"
 

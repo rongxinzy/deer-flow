@@ -63,6 +63,7 @@ class FeishuChannel(Channel):
         self._thread: threading.Thread | None = None
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self._ws_client = None
+        self._ws_loop: asyncio.AbstractEventLoop | None = None
         self._api_client = None
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
@@ -156,7 +157,8 @@ class FeishuChannel(Channel):
             return False
         client = self._ws_client
         if client is None:
-            return True
+            # Not started, or already torn down: nothing is connected yet.
+            return False
         return getattr(client, "_conn", None) is not None
 
     def _build_event_handler(self, lark):
@@ -255,6 +257,7 @@ class FeishuChannel(Channel):
         """
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
+        self._ws_loop = loop
         try:
             import lark_oapi as lark
             import lark_oapi.ws.client as _ws_client_mod
@@ -279,6 +282,26 @@ class FeishuChannel(Channel):
                 logger.exception("Feishu WebSocket error")
             self._running = False
             self._ws_client = None
+        finally:
+            self._ws_loop = None
+
+    def _unwind_ws_loop(self) -> None:
+        """Let ``Client.start()`` unwind so the worker thread can exit.
+
+        The SDK blocks in ``loop.run_until_complete(_select())`` and never
+        returns on its own, so joining the thread alone times out and leaves the
+        thread and its event loop behind — one more per platform restart, now
+        that the watchdog restarts channels automatically. Stopping the loop
+        makes ``run_until_complete`` return, so the thread finishes.
+        """
+        loop = self._ws_loop
+        self._ws_loop = None
+        if loop is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(loop.stop)
+        except RuntimeError:
+            logger.debug("[Feishu] websocket loop already closed")
 
     def _on_ignored_message_event(self, event) -> None:
         logger.debug("[Feishu] ignoring non-content message event: %s", type(event).__name__)
@@ -286,6 +309,7 @@ class FeishuChannel(Channel):
     async def stop(self) -> None:
         self._running = False
         self._ws_client = None
+        self._unwind_ws_loop()
         self.bus.unsubscribe_outbound(self._on_outbound)
         await self._close_and_drain_threadsafe_futures()
 
@@ -299,9 +323,14 @@ class FeishuChannel(Channel):
             await asyncio.gather(*background_tasks, *running_card_tasks, return_exceptions=True)
         self._background_tasks.clear()
         self._running_card_tasks.clear()
-        if self._thread:
-            self._thread.join(timeout=5)
-            self._thread = None
+        thread = self._thread
+        self._thread = None
+        if thread is not None:
+            await asyncio.to_thread(thread.join, 5)
+            if thread.is_alive():
+                logger.warning(
+                    "[Feishu] websocket thread did not exit within 5s; it may linger until the process restarts",
+                )
         logger.info("Feishu channel stopped")
 
     async def send(self, msg: OutboundMessage, *, _max_retries: int = 3) -> None:
