@@ -2903,6 +2903,12 @@ run_ownership:
 #     app_secret: $FEISHU_APP_SECRET
 #     # domain: https://open.feishu.cn       # China (default)
 #     # domain: https://open.larksuite.com   # International
+#     # Display name users @ in a group. Lets group_trigger.mention_only tell
+#     # this bot's mention from one aimed at a colleague; without it, any
+#     # mention in the group is treated as addressing the bot.
+#     # bot_name: "数字员工"
+#     # group_trigger:
+#     #   mention_only: true   # default: a group message is answered only when the bot is @-ed
 #
 #   slack:
 #     enabled: false

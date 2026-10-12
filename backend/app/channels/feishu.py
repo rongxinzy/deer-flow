@@ -1054,6 +1054,59 @@ class FeishuChannel(Channel):
         await self._reply_card(message_id, "Feishu connected to DeerFlow.")
         return True
 
+    def _group_mention_only(self) -> bool:
+        """Whether a fresh group message must address the bot to be handled."""
+        trigger = self.config.get("group_trigger")
+        if isinstance(trigger, dict):
+            return bool(trigger.get("mention_only", True))
+        if trigger is None:
+            return True
+        return bool(trigger)
+
+    def _mentions_bot(self, mentions: list[Any]) -> bool:
+        """Whether one of the message's mentions addresses this bot.
+
+        Feishu leaves the mention in the text itself (``@_user_1``) and, unlike
+        Slack/Discord, cannot tell the bot's mention from another user's there —
+        so the signal is the event's ``mentions`` list. Matching it needs the
+        bot's display name; with none configured we cannot be precise and accept
+        any mention as addressing the bot.
+        """
+        if not mentions:
+            return False
+        configured = self.config.get("bot_name")
+        target = configured.strip().lstrip("@") if isinstance(configured, str) and configured.strip() else ""
+        if not target:
+            return True
+        for mention in mentions:
+            name = getattr(mention, "name", None)
+            if isinstance(name, str) and name.strip().lstrip("@") == target:
+                return True
+        return False
+
+    def _should_ignore_group_message(
+        self,
+        *,
+        chat_type: str | None,
+        root_id: str | None,
+        parent_id: str | None,
+        thread_id: str | None,
+        mentions: list[Any],
+    ) -> bool:
+        """Drop a group message that neither @s the bot nor continues a thread.
+
+        Direct messages are never gated. A reply inside an existing thread keeps
+        the conversation going, so only a fresh top-level group message needs the
+        mention.
+        """
+        if chat_type == "p2p":
+            return False
+        if not self._group_mention_only():
+            return False
+        if root_id or parent_id or thread_id:
+            return False
+        return not self._mentions_bot(mentions)
+
     def _on_message(self, event) -> None:
         """Called by lark-oapi when a message is received (runs in lark thread)."""
         try:
@@ -1140,6 +1193,17 @@ class FeishuChannel(Channel):
 
             if not (text or files_list):
                 logger.info("[Feishu] empty text, ignoring message")
+                return
+
+            mentions = getattr(message, "mentions", None) or []
+            if self._should_ignore_group_message(
+                chat_type=chat_type,
+                root_id=root_id,
+                parent_id=parent_id,
+                thread_id=feishu_thread_id,
+                mentions=mentions,
+            ):
+                logger.info("[Feishu] group message without a bot mention ignored (chat_id=%s)", chat_id)
                 return
 
             connect_code = self._pending_connect_code(text)
