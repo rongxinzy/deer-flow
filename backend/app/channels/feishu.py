@@ -62,6 +62,7 @@ class FeishuChannel(Channel):
         super().__init__(name="feishu", bus=bus, config=config)
         self._thread: threading.Thread | None = None
         self._main_loop: asyncio.AbstractEventLoop | None = None
+        self._ws_client = None
         self._api_client = None
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
@@ -138,6 +139,25 @@ class FeishuChannel(Channel):
         if not self._running:
             return False
         return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether the lark websocket is actually established.
+
+        ``is_running`` only proves the worker thread is alive: when the SDK's
+        reconnect task dies (its ``_reconnect_nonce`` is None and ``_reconnect``
+        raises TypeError) the thread keeps running with a dead socket, so the
+        channel looks healthy while it silently receives nothing. lark-oapi
+        exposes no public connection accessor; it clears ``_conn`` on close
+        (after logging "disconnected to ..."), so a non-None ``_conn`` is the
+        real signal. ``getattr`` keeps a future SDK rename from raising.
+        """
+        if not self.is_running:
+            return False
+        client = self._ws_client
+        if client is None:
+            return True
+        return getattr(client, "_conn", None) is not None
 
     def _build_event_handler(self, lark):
         return (
@@ -252,17 +272,20 @@ class FeishuChannel(Channel):
                 log_level=lark.LogLevel.INFO,
                 domain=domain,
             )
+            self._ws_client = ws_client
             ws_client.start()
         except Exception:
             if self._running:
                 logger.exception("Feishu WebSocket error")
             self._running = False
+            self._ws_client = None
 
     def _on_ignored_message_event(self, event) -> None:
         logger.debug("[Feishu] ignoring non-content message event: %s", type(event).__name__)
 
     async def stop(self) -> None:
         self._running = False
+        self._ws_client = None
         self.bus.unsubscribe_outbound(self._on_outbound)
         await self._close_and_drain_threadsafe_futures()
 

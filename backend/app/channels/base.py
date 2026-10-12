@@ -70,6 +70,16 @@ class Channel(ABC):
         return self._running
 
     @property
+    def is_connected(self) -> bool:
+        """Whether the upstream transport is actually established.
+
+        Defaults to :attr:`is_running`. Channels whose provider SDK can be
+        alive-but-disconnected — a wedged websocket, for instance — override
+        this so a watchdog can tell "process up" apart from "still reachable".
+        """
+        return self.is_running
+
+    @property
     def supports_streaming(self) -> bool:
         return False
 

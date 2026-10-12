@@ -52,6 +52,15 @@ _CHANNEL_CREDENTIAL_KEYS: dict[str, list[str]] = {
 _CHANNELS_LANGGRAPH_URL_ENV = "DEER_FLOW_CHANNELS_LANGGRAPH_URL"
 _CHANNELS_GATEWAY_URL_ENV = "DEER_FLOW_CHANNELS_GATEWAY_URL"
 
+# Channel watchdog: recover a transport that has silently died. A provider SDK
+# can keep its worker thread alive with a dead socket (feishu's lark client
+# wedges after a platform-side restart), so `is_running` stays True and nothing
+# recovers until the channel is restarted. The watchdog only acts on channels
+# that DID connect at least once — a platform that was never reachable is left
+# to the SDK's own retry loop, so an outage does not trigger restart churn.
+DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS = 60.0
+DEFAULT_CHANNEL_WATCHDOG_FAILURE_THRESHOLD = 3
+
 
 def _channel_has_credentials(name: str, channel_config: dict[str, Any]) -> bool:
     cred_keys = _CHANNEL_CREDENTIAL_KEYS.get(name, [])
@@ -159,6 +168,11 @@ class ChannelService:
         self._config = config
         self._running = False
         self._readiness_locks: dict[str, asyncio.Lock] = {}
+        self._watchdog_task: asyncio.Task[None] | None = None
+        self._watchdog_failures: dict[str, int] = {}
+        self._watchdog_ever_connected: dict[str, bool] = {}
+        self._watchdog_interval_seconds = _resolve_non_negative_float(config, "watchdog_interval_seconds", DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS) or DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS
+        self._watchdog_failure_threshold = _resolve_positive_int(config, "watchdog_failure_threshold", DEFAULT_CHANNEL_WATCHDOG_FAILURE_THRESHOLD)
 
     @classmethod
     def from_app_config(
@@ -206,6 +220,7 @@ class ChannelService:
         ready_status = await self.ensure_ready_channels(attempts=2)
         ready_count = sum(1 for ready in ready_status.values() if ready)
         logger.info("ChannelService started with %d/%d ready channels", ready_count, len(ready_status))
+        self._start_channel_watchdog()
 
     async def ensure_ready_channels(self, *, attempts: int = 1) -> dict[str, bool]:
         """Start or restart enabled configured channels that are not ready."""
@@ -284,6 +299,9 @@ class ChannelService:
     async def stop(self) -> None:
         """Drain accepted messages while channels can still deliver replies."""
         self._running = False
+        # Stop the watchdog first: it restarts channels, which must not race
+        # the shutdown drain below.
+        await self._stop_channel_watchdog()
         # Reject new provider work first. Existing workers keep draining during
         # manager.stop(), and channel transports remain alive until that drain
         # completes so an already-sent "Working on it..." can still receive its
@@ -310,6 +328,66 @@ class ChannelService:
             raise ExceptionGroup("one or more channels failed to stop", stop_errors)
 
         logger.info("ChannelService stopped")
+
+    # -- watchdog ----------------------------------------------------------
+
+    def _start_channel_watchdog(self) -> None:
+        if self._watchdog_task is not None and not self._watchdog_task.done():
+            return
+        self._watchdog_task = asyncio.create_task(self._channel_watchdog())
+
+    async def _stop_channel_watchdog(self) -> None:
+        task = self._watchdog_task
+        self._watchdog_task = None
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            logger.exception("Channel watchdog stopped with an error")
+
+    async def _channel_watchdog(self) -> None:
+        while True:
+            await asyncio.sleep(self._watchdog_interval_seconds)
+            try:
+                await self._watchdog_round()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Channel watchdog iteration failed")
+
+    async def _watchdog_round(self) -> None:
+        """Restart any channel that dropped after connecting and never came back."""
+        for name, channel in list(self._channels.items()):
+            channel_config = self._config.get(name)
+            if not isinstance(channel_config, dict) or not channel_config.get("enabled", False):
+                continue
+            if channel.is_connected:
+                self._watchdog_ever_connected[name] = True
+                self._watchdog_failures.pop(name, None)
+                continue
+            if not self._watchdog_ever_connected.get(name):
+                # Never connected: the provider SDK's own retry loop owns this,
+                # so a platform outage does not cause restart churn.
+                continue
+            failures = self._watchdog_failures.get(name, 0) + 1
+            if failures < self._watchdog_failure_threshold:
+                self._watchdog_failures[name] = failures
+                continue
+            self._watchdog_failures.pop(name, None)
+            self._watchdog_ever_connected[name] = False
+            logger.warning("Channel %s lost its connection and did not recover; restarting", name)
+            # Serialize with ensure_channel_ready: both stop and start channels,
+            # so sharing the per-channel lock keeps them from racing.
+            lock = self._readiness_locks.setdefault(name, asyncio.Lock())
+            async with lock:
+                try:
+                    await self.restart_channel(name)
+                except Exception:
+                    logger.exception("Channel watchdog failed to restart %s", name)
 
     def _load_channel_config(self, name: str) -> dict[str, Any] | None:
         """Load the latest config for a specific channel from disk.
@@ -505,6 +583,7 @@ class ChannelService:
             channels_status[name] = {
                 "enabled": enabled,
                 "running": running,
+                "connected": running and self._channels[name].is_connected,
             }
         return {
             "service_running": self._running,
