@@ -311,23 +311,25 @@ class OpenVikingMemoryManager(MemoryManager):
     ) -> dict[str, Any]:
         """List and read the actor's own memory entries.
 
-        Enumerates file URIs under this actor's peer bucket and reads each one.
-        Only the actor's own bucket is exposed: the user-level root, other
-        peers, and the curated shared bucket are never listed.
+        An explicit ``agent_name`` scopes to that agent's bucket. Without one —
+        which is how the gateway's management endpoints call in — it covers the
+        actor's whole memory: the user-level root plus every peer bucket under
+        the credential-bound user. Other employees are separate credentials and
+        are never included.
         """
 
-        peer_id = self._resolve_scope(user_id, agent_name)
-        facts: list[dict[str, Any]] = []
-        for uri in self._own_uris(peer_id):
-            try:
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            facts: list[dict[str, Any]] = []
+            for uri in self._scope_uris(user_id, agent_name):
                 content = self._call_openviking(self._client, "read", uri=uri)
-            except Exception:
-                logger.warning("OpenViking memory read failed for %s", uri, exc_info=True)
-                continue
-            if isinstance(content, bytes | bytearray):
-                content = content.decode("utf-8", errors="replace")
-            facts.append({"id": uri, "content": str(content), "source": uri})
-        return {"facts": facts}
+                if isinstance(content, bytes | bytearray):
+                    content = content.decode("utf-8", errors="replace")
+                facts.append({"id": uri, "content": str(content), "source": uri})
+            return {"facts": facts}
+        finally:
+            self._end_operation()
 
     def delete_fact(
         self,
@@ -336,13 +338,25 @@ class OpenVikingMemoryManager(MemoryManager):
         agent_name: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
-        """Remove one memory entry by the OpenViking URI ``search`` returned."""
+        """Remove one memory entry by the OpenViking URI ``search`` returned.
+
+        Returns the remaining memory document, so a caller that adopts the
+        response body does not mistake a successful delete for an empty store.
+        """
 
         if not fact_id:
             raise ValueError("OpenViking delete_fact requires a fact id (its OpenViking URI)")
-        peer_id = self._resolve_scope(user_id, agent_name)
-        self._remove_uri(self._assert_own_uri(fact_id, peer_id), peer_id=peer_id)
-        return {"facts": []}
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            self._remove_uri(
+                self._assert_own_uri(fact_id, user_id, agent_name),
+                user_id=user_id,
+                agent_name=agent_name,
+            )
+            return self.get_memory(user_id=user_id, agent_name=agent_name)
+        finally:
+            self._end_operation()
 
     def clear_memory(
         self,
@@ -350,44 +364,66 @@ class OpenVikingMemoryManager(MemoryManager):
         user_id: str | None = None,
         agent_name: str | None = None,
     ) -> dict[str, Any]:
-        """Remove every entry under this actor's own peer bucket.
+        """Remove the actor's own memory under every scope root it may read.
 
-        Deliberately scoped to the actor's peer bucket only: the user-level
-        root, other peers, and the curated shared bucket are never touched, so
-        clearing one actor cannot delete another actor's memory.
+        An explicit ``agent_name`` clears only that agent's bucket. Without one
+        it clears the user-level root and every peer bucket of the
+        credential-bound user, which is what recall reads by default. Other
+        employees are separate credentials and are never touched.
         """
 
-        peer_id = self._resolve_scope(user_id, agent_name)
-        for root in self._own_peer_roots(peer_id):
-            self._remove_uri(root, peer_id=peer_id, recursive=True)
-        return {"facts": []}
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            for root in self._scope_roots(user_id, agent_name):
+                self._remove_uri(root, user_id=user_id, agent_name=agent_name, recursive=True)
+            return {"facts": []}
+        finally:
+            self._end_operation()
 
-    def _own_peer_roots(self, peer_id: str) -> list[str]:
-        return [f"viking://~/peers/{peer_id}/memories"]
+    def _scope_roots(self, user_id: str | None, agent_name: str | None) -> list[str]:
+        """Memory roots this call may read or clear."""
 
-    def _own_uris(self, peer_id: str) -> list[str]:
+        if agent_name is not None or self._config.memory_scope == "requester":
+            return [f"viking://~/peers/{self._resolve_scope(user_id, agent_name)}/memories"]
+        return ["viking://~/memories", "viking://~/peers"]
+
+    def _scope_uris(self, user_id: str | None, agent_name: str | None) -> list[str]:
+        """Every memory file URI under the actor's scope roots.
+
+        Enumeration failures propagate: an unreachable OpenViking must surface
+        as an error, not as an empty memory.
+        """
+
         uris: list[str] = []
         seen: set[str] = set()
-        for root in self._own_peer_roots(peer_id):
+        for root in self._scope_roots(user_id, agent_name):
             for pattern in ("*", "**/*"):
-                try:
-                    result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
-                except Exception:
-                    continue
+                result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
                 for uri in _extract_uris(result):
                     if uri not in seen:
                         seen.add(uri)
                         uris.append(uri)
         return uris
 
-    def _assert_own_uri(self, uri: str, peer_id: str) -> str:
-        if not any(uri == root or uri.startswith(root + "/") for root in self._own_peer_roots(peer_id)):
+    def _assert_own_uri(self, uri: str, user_id: str | None, agent_name: str | None) -> str:
+        if "\\" in uri or ".." in uri.split("/"):
+            raise MemoryManagerError(f"refusing to modify a suspicious memory URI: {uri}")
+        if not any(uri == root or uri.startswith(root + "/") for root in self._scope_roots(user_id, agent_name)):
             raise MemoryManagerError(f"refusing to modify a memory URI outside this actor's scope: {uri}")
         return uri
 
-    def _remove_uri(self, uri: str, *, peer_id: str, recursive: bool = False) -> None:
+    def _remove_uri(
+        self,
+        uri: str,
+        *,
+        user_id: str | None,
+        agent_name: str | None,
+        recursive: bool = False,
+    ) -> None:
         # Governance actions are explicit calls: unlike passive capture, a
         # failure surfaces instead of being dropped by the write policy.
+        peer_id = self._resolve_scope(user_id, agent_name)
         with self._actor_peer_scope(peer_id):
             self._call_openviking(self._client, "rm", uri=uri, recursive=recursive)
 

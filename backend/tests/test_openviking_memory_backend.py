@@ -62,8 +62,11 @@ class _Client:
         self.files: dict[str, str] = {}
         self.removals: list[tuple[str, bool]] = []
         self.reads: list[str] = []
+        self.glob_error: Exception | None = None
 
     def glob(self, *, pattern: str, uri: str) -> list[str]:
+        if self.glob_error is not None:
+            raise self.glob_error
         prefix = uri.rstrip("/") + "/"
         return [path for path in self.files if path.startswith(prefix)]
 
@@ -1023,10 +1026,14 @@ def test_delete_fact_removes_only_an_own_uri(
 ) -> None:
     manager = _manager(tmp_path, monkeypatch)
     uri = "viking://~/peers/research/memories/style.md"
+    remaining = "viking://~/peers/research/memories/other.md"
+    manager._client.files = {remaining: "Still here."}
 
-    manager.delete_fact(uri, user_id="alice", agent_name="research")
+    document = manager.delete_fact(uri, user_id="alice", agent_name="research")
 
     assert manager._client.removals == [(uri, False)]
+    # The response is the remaining document, not an empty store.
+    assert [fact["id"] for fact in document["facts"]] == [remaining]
 
 
 def test_delete_fact_refuses_a_uri_outside_the_actors_scope(
@@ -1053,6 +1060,70 @@ def test_clear_memory_clears_only_the_actors_bucket(
     manager.clear_memory(user_id="alice", agent_name="research")
 
     assert manager._client.removals == [("viking://~/peers/research/memories", True)]
+
+
+def test_get_memory_without_an_agent_covers_the_whole_actor_bucket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    user_level = "viking://~/memories/summary.md"
+    agent_bucket = "viking://~/peers/research/memories/style.md"
+    other_agent = "viking://~/peers/other/memories/note.md"
+    manager._client.files = {
+        user_level: "User-level summary.",
+        agent_bucket: "Research fact.",
+        other_agent: "Other agent fact.",
+    }
+
+    # The gateway's management endpoints call without an agent name; recall
+    # reads the user-level root plus every peer bucket, so those are what it
+    # must list.
+    document = manager.get_memory(user_id="alice")
+
+    assert [fact["id"] for fact in document["facts"]] == [user_level, agent_bucket, other_agent]
+
+
+def test_clear_memory_without_an_agent_covers_every_recall_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    manager.clear_memory(user_id="alice")
+
+    assert manager._client.removals == [("viking://~/memories", True), ("viking://~/peers", True)]
+
+
+def test_get_memory_surfaces_an_enumeration_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    manager._client.glob_error = RuntimeError("openviking unreachable")
+
+    # An unreachable backend must fail, not look like an empty memory.
+    with pytest.raises(RuntimeError, match="unreachable"):
+        manager.get_memory(user_id="alice")
+
+
+def test_delete_fact_refuses_a_traversal_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    with pytest.raises(MemoryManagerError, match="suspicious memory URI"):
+        manager.delete_fact(
+            "viking://~/peers/research/memories/../../other/secret.md",
+            user_id="alice",
+            agent_name="research",
+        )
+    assert manager._client.removals == []
 
 
 def test_memory_scope_defaults_to_instance_and_is_validated(
