@@ -24,6 +24,7 @@ from deerflow.agents.memory.backends.openviking.openviking_manager import (
     _canonical_peer_id,
     _session_id,
 )
+from deerflow.agents.memory.backends.openviking.session import _requester_peer_id
 from deerflow.agents.memory.manager import (
     MemoryManagerError,
     MemoryReadError,
@@ -977,3 +978,124 @@ def test_capture_cursor_contains_no_message_content(
 
     assert "very private text" not in serialized
     assert state["submitted_prefix_count"] == 1
+
+
+def test_memory_scope_defaults_to_instance_and_is_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENVIKING_API_KEY", "secret")
+    config = OpenVikingConfig.from_backend_config(_backend_config(tmp_path))
+    assert config.memory_scope == "instance"
+    assert config.shared_peer_id == ""
+
+    with pytest.raises(ValueError, match="memory_scope"):
+        OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="tenant"))
+
+
+def test_shared_peer_id_is_requester_only_and_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENVIKING_API_KEY", "secret")
+    with pytest.raises(ValueError, match="shared_peer_id is only used"):
+        OpenVikingConfig.from_backend_config(_backend_config(tmp_path, shared_peer_id="df-shared-finance"))
+    with pytest.raises(ValueError, match="shared_peer_id"):
+        OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id="Bad Name"))
+    # The shared bucket must live in its own namespace, otherwise a requester
+    # id could alias it and land private writes in a bucket everyone reads.
+    for colliding in ("finance-shared", "df-user-custom", "df-agent-custom"):
+        with pytest.raises(ValueError, match="shared_peer_id must use the reserved prefix"):
+            OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id=colliding))
+    config = OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id="df-shared-finance"))
+    assert config.shared_peer_id == "df-shared-finance"
+
+
+def test_requester_peer_id_is_stable_and_namespaced() -> None:
+    assert _requester_peer_id("alice") == "alice"
+    assert _requester_peer_id("Alice") == "alice"
+    assert _requester_peer_id("user@example.com").startswith("df-user-")
+    # Every "df-" namespace is adapter-owned, so a requester id that looks like
+    # one is hashed instead of aliasing an agent peer or the shared bucket.
+    assert _requester_peer_id("df-agent-custom").startswith("df-user-")
+    assert _requester_peer_id("df-user-custom").startswith("df-user-")
+    assert _requester_peer_id("df-shared-finance").startswith("df-user-")
+    assert _requester_peer_id("has space").startswith("df-user-")
+
+
+def test_instance_scope_keeps_the_user_level_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    manager.get_context("alice", agent_name="research")
+
+    assert manager._retriever.calls[0]["target_uri"] == [
+        "viking://~/memories",
+        "viking://~/peers/research/memories",
+    ]
+
+
+def test_requester_scope_partitions_memory_per_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch, memory_scope="requester")
+
+    manager.get_context("alice", agent_name="research")
+    manager.get_context("bob", agent_name="research")
+
+    assert manager._retriever.calls[0]["target_uri"] == ["viking://~/peers/alice/memories"]
+    assert manager._retriever.calls[1]["target_uri"] == ["viking://~/peers/bob/memories"]
+    assert "viking://~/memories" not in manager._retriever.calls[0]["target_uri"]
+    assert manager._retriever.calls[0]["actor_peer"] == "alice"
+    assert manager._retriever.calls[1]["actor_peer"] == "bob"
+
+    # The write side must partition too: the recorder is handed the requester
+    # as both peer and actor, under a per-requester session id.
+    manager.add("thread-1", [HumanMessage("alice fact", id="h1")], user_id="alice", agent_name="research")
+    manager.add("thread-2", [HumanMessage("bob fact", id="h2")], user_id="bob", agent_name="research")
+
+    alice_write, bob_write = manager._recorder.calls[0], manager._recorder.calls[1]
+    assert (alice_write[2], alice_write[3]) == ("alice", "alice")
+    assert (bob_write[2], bob_write[3]) == ("bob", "bob")
+    assert alice_write[0] != bob_write[0]
+
+
+def test_requester_scope_can_read_a_curated_shared_bucket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch, memory_scope="requester", shared_peer_id="df-shared-finance")
+
+    manager.get_context("bob", agent_name="research")
+
+    assert manager._retriever.calls[0]["target_uri"] == [
+        "viking://~/peers/bob/memories",
+        "viking://~/peers/df-shared-finance/memories",
+    ]
+
+
+def test_requester_scope_fails_closed_without_a_requester(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch, memory_scope="requester")
+
+    assert manager.get_context(None, agent_name="research") == ""
+    assert manager.get_context("default", agent_name="research") == ""
+    assert manager.search("anything", user_id=None, agent_name="research") == []
+
+    manager.add(
+        "thread-1",
+        [HumanMessage("private", id="h1")],
+        user_id=None,
+        agent_name="research",
+    )
+    assert manager._retriever.calls == []
+    assert manager._recorder.calls == []
