@@ -7638,6 +7638,81 @@ class TestWeComChannel:
 
         _run(go())
 
+    def test_start_forwards_ws_url_from_config(self, monkeypatch):
+        from app.channels.wecom import WeComChannel
+
+        async def go():
+            bus = MessageBus()
+            channel = WeComChannel(
+                bus,
+                config={"bot_id": "corp123", "bot_secret": "secret", "ws_url": "ws://127.0.0.1:19999"},
+            )
+
+            captured: dict[str, object] = {}
+            ws_client = MagicMock()
+
+            async def fake_connect():
+                return None
+
+            ws_client.connect = fake_connect
+
+            def make_options(**kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(**kwargs)
+
+            monkeypatch.setitem(
+                __import__("sys").modules,
+                "aibot",
+                SimpleNamespace(
+                    WSClient=lambda options: ws_client,
+                    WSClientOptions=make_options,
+                ),
+            )
+
+            await channel.start()
+
+            assert captured.get("ws_url") == "ws://127.0.0.1:19999"
+
+            await channel.stop()
+
+        _run(go())
+
+    def test_start_defaults_ws_url_when_absent(self, monkeypatch):
+        from app.channels.wecom import WeComChannel
+
+        async def go():
+            bus = MessageBus()
+            channel = WeComChannel(bus, config={"bot_id": "corp123", "bot_secret": "secret"})
+
+            captured: dict[str, object] = {}
+            ws_client = MagicMock()
+
+            async def fake_connect():
+                return None
+
+            ws_client.connect = fake_connect
+
+            def make_options(**kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(**kwargs)
+
+            monkeypatch.setitem(
+                __import__("sys").modules,
+                "aibot",
+                SimpleNamespace(
+                    WSClient=lambda options: ws_client,
+                    WSClientOptions=make_options,
+                ),
+            )
+
+            await channel.start()
+
+            assert captured.get("ws_url") == ""
+
+            await channel.stop()
+
+        _run(go())
+
 
 class TestChannelService:
     def test_get_status_no_channels(self):
