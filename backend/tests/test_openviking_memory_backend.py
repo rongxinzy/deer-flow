@@ -58,6 +58,20 @@ class _Client:
         self.kwargs = kwargs
         self.closed = False
         self.healthy = True
+        self.files: dict[str, str] = {}
+        self.removals: list[tuple[str, bool]] = []
+        self.reads: list[str] = []
+
+    def glob(self, *, pattern: str, uri: str) -> list[str]:
+        prefix = uri.rstrip("/") + "/"
+        return [path for path in self.files if path.startswith(prefix)]
+
+    def read(self, *, uri: str) -> str:
+        self.reads.append(uri)
+        return self.files[uri]
+
+    def rm(self, *, uri: str, recursive: bool = False, **_kwargs: Any) -> None:
+        self.removals.append((uri, recursive))
 
     def health(self) -> bool:
         return self.healthy
@@ -185,6 +199,7 @@ def official_integration(monkeypatch: pytest.MonkeyPatch) -> None:
             "OpenVikingRetriever": _Retriever,
             "OpenVikingSessionRecorder": _Recorder,
             "use_actor_peer": _use_actor_peer,
+            "call_openviking": lambda client, method, /, **kwargs: getattr(client, method)(**kwargs),
         },
     )
 
@@ -977,3 +992,63 @@ def test_capture_cursor_contains_no_message_content(
 
     assert "very private text" not in serialized
     assert state["submitted_prefix_count"] == 1
+
+
+def test_get_memory_lists_and_reads_only_the_actors_own_bucket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    own = "viking://~/peers/research/memories/style.md"
+    other = "viking://~/peers/other/memories/secret.md"
+    user_level = "viking://~/memories/shared.md"
+    manager._client.files = {
+        own: "Prefers concise answers.",
+        other: "Someone else's memory.",
+        user_level: "Shared user-level memory.",
+    }
+
+    document = manager.get_memory(user_id="alice", agent_name="research")
+
+    assert document == {"facts": [{"id": own, "content": "Prefers concise answers.", "source": own}]}
+    assert manager._client.reads == [own]
+
+
+def test_delete_fact_removes_only_an_own_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    uri = "viking://~/peers/research/memories/style.md"
+
+    manager.delete_fact(uri, user_id="alice", agent_name="research")
+
+    assert manager._client.removals == [(uri, False)]
+
+
+def test_delete_fact_refuses_a_uri_outside_the_actors_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    with pytest.raises(MemoryManagerError, match="outside this actor's scope"):
+        manager.delete_fact("viking://~/peers/other/memories/secret.md", user_id="alice", agent_name="research")
+    with pytest.raises(MemoryManagerError, match="outside this actor's scope"):
+        manager.delete_fact("viking://~/memories/shared.md", user_id="alice", agent_name="research")
+    assert manager._client.removals == []
+
+
+def test_clear_memory_clears_only_the_actors_bucket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    manager.clear_memory(user_id="alice", agent_name="research")
+
+    assert manager._client.removals == [("viking://~/peers/research/memories", True)]

@@ -48,6 +48,7 @@ class OpenVikingMemoryManager(MemoryManager):
     _recorder: Any = PrivateAttr()
     _retriever: Any = PrivateAttr()
     _use_actor_peer: Any = PrivateAttr()
+    _call_openviking: Any = PrivateAttr()
     _partial_write_error: type[Exception] = PrivateAttr()
     _should_keep_hidden_message: Any = PrivateAttr(default=None)
     _session_locks: weakref.WeakValueDictionary[str, threading.RLock] = PrivateAttr(default_factory=weakref.WeakValueDictionary)
@@ -84,6 +85,7 @@ class OpenVikingMemoryManager(MemoryManager):
             max_content_chars=self._config.max_injection_chars,
         )
         self._use_actor_peer = integration["use_actor_peer"]
+        self._call_openviking = integration["call_openviking"]
         self._partial_write_error = integration["OpenVikingPartialWriteError"]
 
     @classmethod
@@ -271,6 +273,95 @@ class OpenVikingMemoryManager(MemoryManager):
             agent_name=agent_name,
             category=category,
         )
+
+    # ------------------------------------------------------------ governance
+    def get_memory(
+        self,
+        *,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        """List and read the actor's own memory entries.
+
+        Enumerates file URIs under this actor's peer bucket and reads each one.
+        Only the actor's own bucket is exposed: the user-level root, other
+        peers, and the curated shared bucket are never listed.
+        """
+
+        peer_id = self._resolve_scope(user_id, agent_name)
+        facts: list[dict[str, Any]] = []
+        for uri in self._own_uris(peer_id):
+            try:
+                content = self._call_openviking(self._client, "read", uri=uri)
+            except Exception:
+                logger.warning("OpenViking memory read failed for %s", uri, exc_info=True)
+                continue
+            if isinstance(content, bytes | bytearray):
+                content = content.decode("utf-8", errors="replace")
+            facts.append({"id": uri, "content": str(content), "source": uri})
+        return {"facts": facts}
+
+    def delete_fact(
+        self,
+        fact_id: str,
+        *,
+        agent_name: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Remove one memory entry by the OpenViking URI ``search`` returned."""
+
+        if not fact_id:
+            raise ValueError("OpenViking delete_fact requires a fact id (its OpenViking URI)")
+        peer_id = self._resolve_scope(user_id, agent_name)
+        self._remove_uri(self._assert_own_uri(fact_id, peer_id), peer_id=peer_id)
+        return {"facts": []}
+
+    def clear_memory(
+        self,
+        *,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Remove every entry under this actor's own peer bucket.
+
+        Deliberately scoped to the actor's peer bucket only: the user-level
+        root, other peers, and the curated shared bucket are never touched, so
+        clearing one actor cannot delete another actor's memory.
+        """
+
+        peer_id = self._resolve_scope(user_id, agent_name)
+        for root in self._own_peer_roots(peer_id):
+            self._remove_uri(root, peer_id=peer_id, recursive=True)
+        return {"facts": []}
+
+    def _own_peer_roots(self, peer_id: str) -> list[str]:
+        return [f"viking://~/peers/{peer_id}/memories"]
+
+    def _own_uris(self, peer_id: str) -> list[str]:
+        uris: list[str] = []
+        seen: set[str] = set()
+        for root in self._own_peer_roots(peer_id):
+            for pattern in ("*", "**/*"):
+                try:
+                    result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
+                except Exception:
+                    continue
+                for uri in _extract_uris(result):
+                    if uri not in seen:
+                        seen.add(uri)
+                        uris.append(uri)
+        return uris
+
+    def _assert_own_uri(self, uri: str, peer_id: str) -> str:
+        if not any(uri == root or uri.startswith(root + "/") for root in self._own_peer_roots(peer_id)):
+            raise MemoryManagerError(f"refusing to modify a memory URI outside this actor's scope: {uri}")
+        return uri
+
+    def _remove_uri(self, uri: str, *, peer_id: str, recursive: bool = False) -> None:
+        # Governance actions are explicit calls: unlike passive capture, a
+        # failure surfaces instead of being dropped by the write policy.
+        with self._actor_peer_scope(peer_id):
+            self._call_openviking(self._client, "rm", uri=uri, recursive=recursive)
 
     def warm(self) -> bool | None:
         if not self._begin_operation():
@@ -586,6 +677,7 @@ def _load_official_integration() -> dict[str, Any]:
             has_request_actor_peer_support,
         )
         from langchain_openviking.actor_peer import use_actor_peer
+        from langchain_openviking.client import call_openviking
     except ImportError as exc:
         raise ImportError("The OpenViking memory backend requires langchain-openviking==0.1.0. Install DeerFlow backend dependencies and retry.") from exc
     if not has_request_actor_peer_support():
@@ -596,6 +688,7 @@ def _load_official_integration() -> dict[str, Any]:
         "OpenVikingRetriever": OpenVikingRetriever,
         "OpenVikingSessionRecorder": OpenVikingSessionRecorder,
         "use_actor_peer": use_actor_peer,
+        "call_openviking": call_openviking,
     }
 
 
@@ -633,6 +726,28 @@ def _document_to_fact(document: Any) -> dict[str, Any]:
         "source": uri,
         "score": score,
     }
+
+
+def _extract_uris(value: Any) -> list[str]:
+    """Collect ``viking://`` URIs from a glob/ls result of any nesting."""
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.startswith("viking://") else []
+    if isinstance(value, dict):
+        if isinstance(value.get("uri"), str):
+            return [value["uri"]]
+        uris: list[str] = []
+        for key in ("matches", "result", "files", "items"):
+            uris.extend(_extract_uris(value.get(key)))
+        return uris
+    if isinstance(value, list):
+        nested: list[str] = []
+        for item in value:
+            nested.extend(_extract_uris(item))
+        return nested
+    return []
 
 
 __all__ = [
