@@ -503,9 +503,7 @@ class OpenVikingMemoryManager(MemoryManager):
             # shared bucket.
             requester = str(user_id or "").strip()
             if not requester or requester == "default":
-                raise RequesterScopeError(
-                    "OpenViking requester-scoped memory requires an authenticated requester; refusing to fall back to a shared memory space."
-                )
+                raise RequesterScopeError("OpenViking requester-scoped memory requires an authenticated requester; refusing to fall back to a shared memory space.")
             return _requester_peer_id(requester)
         resolved_user = str(user_id or "default")
         if resolved_user != self._config.owner_user_id:

@@ -1001,19 +1001,13 @@ def test_shared_peer_id_is_requester_only_and_validated(
     with pytest.raises(ValueError, match="shared_peer_id is only used"):
         OpenVikingConfig.from_backend_config(_backend_config(tmp_path, shared_peer_id="df-shared-finance"))
     with pytest.raises(ValueError, match="shared_peer_id"):
-        OpenVikingConfig.from_backend_config(
-            _backend_config(tmp_path, memory_scope="requester", shared_peer_id="Bad Name")
-        )
+        OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id="Bad Name"))
     # The shared bucket must live in its own namespace, otherwise a requester
     # id could alias it and land private writes in a bucket everyone reads.
     for colliding in ("finance-shared", "df-user-custom", "df-agent-custom"):
         with pytest.raises(ValueError, match="shared_peer_id must use the reserved prefix"):
-            OpenVikingConfig.from_backend_config(
-                _backend_config(tmp_path, memory_scope="requester", shared_peer_id=colliding)
-            )
-    config = OpenVikingConfig.from_backend_config(
-        _backend_config(tmp_path, memory_scope="requester", shared_peer_id="df-shared-finance")
-    )
+            OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id=colliding))
+    config = OpenVikingConfig.from_backend_config(_backend_config(tmp_path, memory_scope="requester", shared_peer_id="df-shared-finance"))
     assert config.shared_peer_id == "df-shared-finance"
 
 
