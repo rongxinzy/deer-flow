@@ -1,5 +1,10 @@
 ### Configuration System
 
+`lead_identity` is a bounded, deployment-scoped label snapshot. Its values may
+be business-user-influenced and must reach the model only as user-role data.
+`_resolve_config_env` excludes this subtree from `$ENV` expansion so a label
+cannot read Gateway secrets through the config loader.
+
 Operator prompt overlays: `lead_prompt_overlay` on AppConfig and
 `subagents.agents.<name>.prompt_overlay` accept literal `prepend`/`append` strings.
 The per-assembly snapshot owns these settings; no run-context override exists.

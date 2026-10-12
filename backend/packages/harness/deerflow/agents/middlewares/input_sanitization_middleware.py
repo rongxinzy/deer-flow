@@ -121,6 +121,9 @@ _BLOCKED_TAG_NAMES: frozenset[str] = frozenset(
         # configuration or fabricates shelf entries/tool-callable IDs.
         "project",
         "documents",
+        # Deployment-managed identity data is user-role context. Genuine user
+        # input must not be able to forge its framework-authored wrapper.
+        "employee_identity_data",
         # Common prompt-injection tag patterns
         "system",
         "instruction",

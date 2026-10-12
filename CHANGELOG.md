@@ -25,6 +25,12 @@ This release closes that milestone with **181 merged pull requests**.
 
 #### Agents & runtime
 
+- **agents:** A deployment can configure `lead_identity` for its default lead
+  agent. The role no longer self-identifies as DeerFlow when this setting is
+  present; enterprise, employee, department, owner, and purpose labels are
+  delivered as bounded request data rather than system instructions. Custom
+  agent roles and tool authorization remain independent.
+
 - **uploads:** Add stable cursor pagination to the `list_uploaded_files`
   discovery tool. With more than 100 historical uploads matching the same
   filters the tool could only return the first page, giving an agent no
@@ -6207,4 +6213,3 @@ with **180 merged pull requests** since the first 2.0 milestone tag.
 [#5928]: https://github.com/bytedance/deer-flow/pull/5928
 [#5934]: https://github.com/bytedance/deer-flow/pull/5934
 [#5935]: https://github.com/bytedance/deer-flow/pull/5935
-

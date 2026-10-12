@@ -4,6 +4,17 @@ This guide explains how to configure DeerFlow for your environment.
 
 ## Prompt overlays
 
+To identify the default lead agent with a deployed business employee, set
+`lead_identity` with the verified enterprise deployment ID/name, employee
+name/purpose, owning team ID/name, and responsible owner ID/name. DeerFlow
+renders the labels in a transient user-role data block on every model request;
+the system role becomes a generic enterprise digital employee. These labels
+do not grant permissions and do not replace the AEP identity or tool policy.
+Identity labels are literal strings; `$NAME` is not expanded from the Gateway
+environment in this subtree.
+Custom agents retain their own role and SOUL.md. Omit `lead_identity` to keep
+the original DeerFlow role byte-for-byte.
+
 Operators can add instructions around existing system prompts in `config.yaml`.
 Empty or omitted extensions preserve the original prompt exactly. The built-in
 instructions remain present; extensions do not change tool authorization,

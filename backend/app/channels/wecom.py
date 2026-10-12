@@ -96,6 +96,7 @@ class WeComChannel(Channel):
         super().__init__(name="wecom", bus=bus, config=config)
         self._bot_id: str | None = None
         self._bot_secret: str | None = None
+        self._ws_url: str = ""
         self._ws_client = None
         self._ws_task: asyncio.Task | None = None
         self._ws_shutdown_task: asyncio.Future[Any] | None = None
@@ -166,9 +167,11 @@ class WeComChannel(Channel):
             bot_id = self.config.get("bot_id")
             bot_secret = self.config.get("bot_secret")
             working_message = self.config.get("working_message")
+            ws_url = self.config.get("ws_url")
 
             self._bot_id = bot_id if isinstance(bot_id, str) and bot_id else None
             self._bot_secret = bot_secret if isinstance(bot_secret, str) and bot_secret else None
+            self._ws_url = ws_url.strip() if isinstance(ws_url, str) and ws_url.strip() else ""
             self._working_message = working_message if isinstance(working_message, str) and working_message else "Working on it..."
 
             if not self._bot_id or not self._bot_secret:
@@ -181,7 +184,14 @@ class WeComChannel(Channel):
                 logger.error("wecom-aibot-python-sdk is not installed. Install it with: uv add wecom-aibot-python-sdk")
                 return
             else:
-                self._ws_client = WSClient(WSClientOptions(bot_id=self._bot_id, secret=self._bot_secret, logger=logger))
+                self._ws_client = WSClient(
+                    WSClientOptions(
+                        bot_id=self._bot_id,
+                        secret=self._bot_secret,
+                        ws_url=self._ws_url,
+                        logger=logger,
+                    )
+                )
                 self._ws_client.on("message.text", self._on_ws_text)
                 self._ws_client.on("message.mixed", self._on_ws_mixed)
                 self._ws_client.on("message.image", self._on_ws_image)

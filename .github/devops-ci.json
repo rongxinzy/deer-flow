@@ -1,0 +1,116 @@
+{
+  "workflows": [
+    {
+      "name": "Backend Blocking IO",
+      "path": ".github/workflows/backend-blocking-io-tests.yml",
+      "paths": [
+        "backend/**",
+        ".github/workflows/backend-blocking-io-tests.yml"
+      ]
+    },
+    {
+      "name": "Unit Tests",
+      "path": ".github/workflows/backend-unit-tests.yml"
+    },
+    {
+      "name": "Publish Helm Chart",
+      "path": ".github/workflows/chart.yaml",
+      "paths": [
+        "deploy/helm/deer-flow/**",
+        "config.example.yaml",
+        ".github/workflows/chart.yaml",
+        "scripts/check_config_version.sh",
+        "scripts/check_chart_sandbox_service.sh",
+        "scripts/check_chart_sandbox_storage.sh",
+        "scripts/check_chart_skill_upload_size.sh"
+      ]
+    },
+    {
+      "name": "E2E Tests",
+      "path": ".github/workflows/e2e-tests.yml",
+      "paths": [
+        "frontend/**",
+        "backend/app/gateway/routers/plugins.py",
+        "backend/extension_test_fixtures/bookmark_plugin_gateway.py",
+        "backend/extension_test_fixtures/browser_asset_gateway.py",
+        "backend/packages/extension-api/**",
+        "backend/packages/harness/deerflow/extensions/**",
+        "backend/packages/harness/deerflow/config/plugin_settings.py",
+        "backend/pyproject.toml",
+        "backend/uv.lock",
+        "examples/deerflow-extension-bookmarks/**",
+        ".github/workflows/e2e-tests.yml"
+      ]
+    },
+    {
+      "name": "Frontend Unit Tests",
+      "path": ".github/workflows/frontend-unit-tests.yml"
+    },
+    {
+      "name": "Jev Plugin Package",
+      "path": ".github/workflows/jev-plugin-package.yml",
+      "paths": [
+        "examples/deerflow-extension-jev-context/**",
+        "backend/packages/extension-api/**",
+        "backend/packages/harness/deerflow/extensions/**",
+        ".github/workflows/jev-plugin-package.yml"
+      ]
+    },
+    {
+      "name": "Lint Check",
+      "path": ".github/workflows/lint-check.yml",
+      "branches": [
+        "*"
+      ]
+    },
+    {
+      "name": "Replay E2E (front-back contract)",
+      "path": ".github/workflows/replay-e2e.yml",
+      "paths": [
+        "frontend/**",
+        "backend/app/gateway/**",
+        "backend/packages/harness/**",
+        "backend/tests/fixtures/replay/**",
+        "backend/tests/replay_provider.py",
+        "backend/tests/_replay_fixture.py",
+        "backend/tests/seed_runs_router.py",
+        "backend/tests/test_replay_golden.py",
+        "backend/scripts/run_replay_gateway.py",
+        ".github/workflows/replay-e2e.yml"
+      ]
+    },
+    {
+      "name": "Sandbox Image Smoke",
+      "path": ".github/workflows/sandbox-image-smoke.yml",
+      "paths": [
+        "backend/packages/harness/deerflow/community/aio_sandbox/**",
+        "backend/tests/test_aio_sandbox_local_backend.py",
+        ".github/workflows/sandbox-image-smoke.yml"
+      ]
+    },
+    {
+      "name": "Publish Sandbox Network Proxy",
+      "path": ".github/workflows/sandbox-network-proxy-image.yaml",
+      "paths": [
+        "docker/sandbox-network-proxy/**",
+        "backend/packages/harness/deerflow/community/aio_sandbox/network_proxy.py",
+        ".github/workflows/sandbox-network-proxy-image.yaml"
+      ]
+    },
+    {
+      "name": "Skill Review CI",
+      "path": ".github/workflows/skill-review-ci.yml",
+      "paths": [
+        "skills/public/**",
+        "backend/packages/harness/deerflow/skills/review/**",
+        "contracts/skill_review/**",
+        "scripts/review_changed_public_skills.py",
+        "scripts/skill_review_waivers.py",
+        ".github/skill-review-waivers.v1.json",
+        "backend/pyproject.toml",
+        "backend/uv.lock",
+        ".github/workflows/skill-review-ci.yml"
+      ]
+    }
+  ]
+}
