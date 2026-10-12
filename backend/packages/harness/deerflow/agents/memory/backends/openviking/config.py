@@ -12,6 +12,9 @@ from urllib.parse import urlparse
 
 _SAFE_PEER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 GENERATED_PEER_PREFIX = "df-agent-"
+# Curated shared bucket lives in a namespace no requester peer can occupy, so a
+# requester can never read another requester's private bucket through it.
+SHARED_PEER_PREFIX = "df-shared-"
 _REMOVED_CUSTOM_HTTP_FIELDS = frozenset(
     {
         "connect_timeout_seconds",
@@ -143,8 +146,8 @@ class OpenVikingConfig:
         if self.shared_peer_id:
             if not is_safe_peer_id(self.shared_peer_id):
                 raise ValueError("OpenViking shared_peer_id must start with a lowercase letter or digit and contain at most 64 lowercase letters, digits, '_' or '-'")
-            if self.shared_peer_id.startswith(GENERATED_PEER_PREFIX):
-                raise ValueError(f"OpenViking shared_peer_id must not start with the reserved prefix {GENERATED_PEER_PREFIX!r}")
+            if not self.shared_peer_id.startswith(SHARED_PEER_PREFIX):
+                raise ValueError(f"OpenViking shared_peer_id must use the reserved prefix {SHARED_PEER_PREFIX!r} so a requester peer can never alias the shared bucket")
         if self.memory_scope == "instance" and self.shared_peer_id:
             raise ValueError("OpenViking shared_peer_id is only used when memory_scope='requester'")
         if not isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:

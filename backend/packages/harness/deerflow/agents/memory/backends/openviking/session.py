@@ -48,6 +48,10 @@ def _session_id(
 
 
 _REQUESTER_PEER_PREFIX = "df-user-"
+# Every "df-" peer namespace is adapter-owned (agent peers, requester peers,
+# curated shared buckets), so a requester id that looks like one is hashed
+# rather than reused — it must never alias a bucket it should not read.
+_RESERVED_PEER_PREFIX = "df-"
 
 
 def _requester_peer_id(user_id: str) -> str:
@@ -56,16 +60,13 @@ def _requester_peer_id(user_id: str) -> str:
     OpenViking scopes memory per (credential-bound user, peer). Partitioning
     by requester means the requester id becomes its own peer namespace inside
     the employee's user, so two humans sharing one instance stop sharing one
-    memory space. Unsafe or reserved-looking ids are hashed into the reserved
-    ``df-user-`` namespace so they cannot alias an agent peer.
+    memory space. Ids that are unsafe or look like an adapter-reserved
+    namespace are hashed into the reserved ``df-user-`` namespace so they
+    cannot alias an agent peer or the curated shared bucket.
     """
 
     value = str(user_id).strip().lower()
-    if (
-        is_safe_peer_id(value)
-        and not value.startswith(GENERATED_PEER_PREFIX)
-        and not value.startswith(_REQUESTER_PEER_PREFIX)
-    ):
+    if is_safe_peer_id(value) and not value.startswith(_RESERVED_PEER_PREFIX):
         return value
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
     return f"{_REQUESTER_PEER_PREFIX}{digest}"
