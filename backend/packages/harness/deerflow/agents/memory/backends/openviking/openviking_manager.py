@@ -382,10 +382,17 @@ class OpenVikingMemoryManager(MemoryManager):
             self._end_operation()
 
     def _scope_roots(self, user_id: str | None, agent_name: str | None) -> list[str]:
-        """Memory roots this call may read or clear."""
+        """Memory roots this call may read or clear.
 
+        The wide instance listing still runs the owner check. Omitting
+        ``agent_name`` must not let another DeerFlow user read the credential
+        owner's directory; ``single_tenant_instance`` keeps its existing
+        mapping inside ``_resolve_scope``.
+        """
+
+        peer_id = self._resolve_scope(user_id, agent_name)
         if agent_name is not None or self._config.memory_scope == "requester":
-            return [f"viking://~/peers/{self._resolve_scope(user_id, agent_name)}/memories"]
+            return [f"viking://~/peers/{peer_id}/memories"]
         return ["viking://~/memories", "viking://~/peers"]
 
     def _scope_uris(self, user_id: str | None, agent_name: str | None) -> list[str]:

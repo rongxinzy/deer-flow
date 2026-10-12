@@ -1085,6 +1085,25 @@ def test_get_memory_without_an_agent_covers_the_whole_actor_bucket(
     assert [fact["id"] for fact in document["facts"]] == [user_level, agent_bucket, other_agent]
 
 
+def test_unscoped_memory_refuses_a_different_deerflow_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    manager._client.files = {"viking://~/memories/secret.md": "Alice only"}
+
+    with pytest.raises(MemoryManagerError, match="owner_user_id 'alice'"):
+        manager.get_memory(user_id="bob")
+    with pytest.raises(MemoryManagerError, match="owner_user_id 'alice'"):
+        manager.clear_memory(user_id="bob")
+    with pytest.raises(MemoryManagerError, match="owner_user_id 'alice'"):
+        manager.delete_fact("viking://~/memories/secret.md", user_id="bob")
+
+    assert manager._client.reads == []
+    assert manager._client.removals == []
+
+
 def test_clear_memory_without_an_agent_covers_every_recall_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
