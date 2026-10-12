@@ -47,15 +47,55 @@ def _session_id(
     return f"df_{digest[:48]}"
 
 
-def _memory_target_uris(peer_id: str) -> list[str]:
-    """Return the self and current-peer memory roots for a request."""
+_REQUESTER_PEER_PREFIX = "df-user-"
+# Every "df-" peer namespace is adapter-owned (agent peers, requester peers,
+# curated shared buckets), so a requester id that looks like one is hashed
+# rather than reused — it must never alias a bucket it should not read.
+_RESERVED_PEER_PREFIX = "df-"
+
+
+def _requester_peer_id(user_id: str) -> str:
+    """Map a requesting user id to a stable, collision-resistant peer id.
+
+    OpenViking scopes memory per (credential-bound user, peer). Partitioning
+    by requester means the requester id becomes its own peer namespace inside
+    the employee's user, so two humans sharing one instance stop sharing one
+    memory space. Ids that are unsafe or look like an adapter-reserved
+    namespace are hashed into the reserved ``df-user-`` namespace so they
+    cannot alias an agent peer or the curated shared bucket.
+    """
+
+    value = str(user_id).strip().lower()
+    if is_safe_peer_id(value) and not value.startswith(_RESERVED_PEER_PREFIX):
+        return value
+    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
+    return f"{_REQUESTER_PEER_PREFIX}{digest}"
+
+
+def _memory_target_uris(
+    peer_id: str,
+    *,
+    shared_peer_id: str = "",
+    requester_scoped: bool = False,
+) -> list[str]:
+    """Return the memory roots to read for a request.
+
+    Without requester scoping this keeps the shipped behavior: the user-level
+    root (shared by every peer under the credential) plus the current peer.
+    With requester scoping the user-level root is dropped so recall cannot
+    reach another requester's memories; a curated ``shared_peer_id`` root may
+    be added back explicitly.
+    """
 
     # OpenViking >= 0.4 rejects the uid-less "viking://user/memories" spelling
     # at the request boundary; "~" is the authenticated-user expansion.
-    return [
-        "viking://~/memories",
-        f"viking://~/peers/{peer_id}/memories",
-    ]
+    uris: list[str] = []
+    if not requester_scoped:
+        uris.append("viking://~/memories")
+    uris.append(f"viking://~/peers/{peer_id}/memories")
+    if requester_scoped and shared_peer_id and shared_peer_id != peer_id:
+        uris.append(f"viking://~/peers/{shared_peer_id}/memories")
+    return uris
 
 
 def _captureable_messages(
