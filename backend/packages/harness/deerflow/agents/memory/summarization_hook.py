@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from deerflow.agents.memory import get_memory_manager
+from deerflow.agents.memory.manager import requester_kwargs
 from deerflow.agents.middlewares.memory_middleware import redact_queued_messages
 from deerflow.agents.middlewares.summarization_middleware import SummarizationEvent
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.pii_redaction_config import PiiRedactionConfig
-from deerflow.runtime.user_context import resolve_runtime_user_id
+from deerflow.runtime.user_context import requester_from_runtime, resolve_runtime_user_id
 
 
 def memory_flush_hook(event: SummarizationEvent, pii_redaction_config: PiiRedactionConfig | None = None) -> None:
@@ -25,9 +26,11 @@ def memory_flush_hook(event: SummarizationEvent, pii_redaction_config: PiiRedact
         return
 
     user_id = resolve_runtime_user_id(event.runtime)
-    get_memory_manager().add_nowait(
+    manager = get_memory_manager()
+    manager.add_nowait(
         event.thread_id,
         redact_queued_messages(list(event.messages_to_summarize), pii_redaction_config),
         agent_name=event.agent_name,
         user_id=user_id,
+        **requester_kwargs(manager, requester_from_runtime(event.runtime)),
     )

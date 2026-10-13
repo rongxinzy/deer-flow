@@ -252,12 +252,13 @@ class OpenVikingMemoryManager(MemoryManager):
         user_id: str | None = None,
         agent_name: str | None = None,
         category: str | None = None,
+        requester_id: str | None = None,
     ) -> list[dict[str, Any]]:
         if not query.strip() or not self._begin_operation():
             return []
         try:
             try:
-                peer_id = self._resolve_read_scope(user_id, agent_name)
+                peer_id = self._resolve_read_scope(user_id, agent_name, requester_id)
             except RequesterScopeError as exc:
                 if self._config.read_failure_policy == "raise":
                     raise
@@ -300,6 +301,7 @@ class OpenVikingMemoryManager(MemoryManager):
         user_id: str | None = None,
         agent_name: str | None = None,
         category: str | None = None,
+        requester_id: str | None = None,
     ) -> list[dict[str, Any]]:
         return await asyncio.to_thread(
             self.search,
@@ -308,6 +310,7 @@ class OpenVikingMemoryManager(MemoryManager):
             user_id=user_id,
             agent_name=agent_name,
             category=category,
+            requester_id=requester_id,
         )
 
     def warm(self) -> bool | None:

@@ -712,6 +712,7 @@ def _get_memory_context(
     app_config: AppConfig | None = None,
     user_id: str | None = None,
     query: str | None = None,
+    requester_id: str | None = None,
 ) -> str:
     """Get memory context for injection into system prompt.
 
@@ -735,7 +736,7 @@ def _get_memory_context(
     try:
         from deerflow.agents.memory import get_memory_manager
         from deerflow.agents.memory.manager import context_query_kwargs, requester_kwargs
-        from deerflow.runtime.user_context import get_requester_id, resolve_runtime_user_id
+        from deerflow.runtime.user_context import resolve_runtime_user_id
 
         if app_config is None:
             from deerflow.config.memory_config import get_memory_config
@@ -752,7 +753,7 @@ def _get_memory_context(
             user_id=user_id or resolve_runtime_user_id(None),
             agent_name=agent_name,
             **context_query_kwargs(manager.get_context, query),
-            **requester_kwargs(manager, get_requester_id()),
+            **requester_kwargs(manager, requester_id),
         )
 
         if not memory_content.strip():

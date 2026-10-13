@@ -118,6 +118,20 @@ def get_requester_id() -> str | None:
     return _requester_id.get()
 
 
+def requester_from_runtime(runtime: object | None) -> str | None:
+    """Resolve the trusted requester for *runtime*.
+
+    Prefers the explicit run-context field (carried across graph nodes as data)
+    and falls back to the task-local ContextVar. Returns ``None`` when the key
+    is absent anywhere — callers must treat that as "unresolved", never as an
+    invitation to invent an identity.
+    """
+    context = getattr(runtime, "context", None) if runtime is not None else None
+    if isinstance(context, dict) and "requester_id" in context:
+        return context.get("requester_id")
+    return _requester_id.get()
+
+
 DEFAULT_USER_ID: Final[str] = "default"
 
 

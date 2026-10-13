@@ -16,7 +16,7 @@ from deerflow.agents.memory.manager import requester_kwargs
 from deerflow.agents.middlewares.pii_redaction_middleware import _make_redactor, _redact_content, _Redactor
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.pii_redaction_config import PiiRedactionConfig
-from deerflow.runtime.user_context import get_requester_id, resolve_runtime_user_id
+from deerflow.runtime.user_context import requester_from_runtime, resolve_runtime_user_id
 from deerflow.trace_context import DEERFLOW_TRACE_METADATA_KEY, resolve_trace_id
 from deerflow.utils.messages import ORIGINAL_USER_CONTENT_KEY
 
@@ -208,7 +208,7 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
             agent_name=self._agent_name,
             user_id=user_id,
             trace_id=trace_id,
-            **requester_kwargs(manager, get_requester_id()),
+            **requester_kwargs(manager, requester_from_runtime(runtime)),
         )
 
         return None
@@ -227,6 +227,6 @@ class MemoryMiddleware(AgentMiddleware[MemoryMiddlewareState]):
             agent_name=self._agent_name,
             user_id=user_id,
             trace_id=trace_id,
-            **requester_kwargs(manager, get_requester_id()),
+            **requester_kwargs(manager, requester_from_runtime(runtime)),
         )
         return None

@@ -61,7 +61,7 @@ from langgraph.runtime import Runtime
 
 from deerflow.projects.context import build_project_context_message, is_project_context_message, pinned_project_snapshot, project_context_insertion_index, render_documents_block, render_project_block
 from deerflow.runtime.context_keys import CURRENT_RUN_PRE_EXISTING_MESSAGE_IDS_KEY
-from deerflow.runtime.user_context import resolve_runtime_user_id
+from deerflow.runtime.user_context import requester_from_runtime, resolve_runtime_user_id
 from deerflow.utils.messages import INJECTED_USER_MESSAGE_ID_SUFFIX, ORIGINAL_USER_CONTENT_KEY, strip_injected_user_message_id_suffix
 
 if TYPE_CHECKING:
@@ -448,6 +448,7 @@ class DynamicContextMiddleware(AgentMiddleware):
                 app_config=self._app_config,
                 user_id=resolve_runtime_user_id(runtime),
                 query=query,
+                requester_id=requester_from_runtime(runtime),
             )
             if injection_enabled
             else ""
