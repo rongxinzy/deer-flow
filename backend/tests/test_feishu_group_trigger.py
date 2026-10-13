@@ -57,8 +57,7 @@ def test_bot_identity_is_discovered_through_tenant_sdk_request():
     channel = FeishuChannel(MessageBus(), {})
     client = Mock()
     client.request.return_value = SimpleNamespace(success=lambda: True, raw=SimpleNamespace(content=json.dumps({"bot": {"open_id": "ou_bot"}}).encode()))
-    channel._api_client = client
-    channel._load_bot_identity()
+    channel._load_bot_identity(client)
     assert channel._mentions_bot([{"id": {"open_id": "ou_bot"}}])
     request = client.request.call_args.args[0]
     assert request.uri == "/open-apis/bot/v3/info"
@@ -68,9 +67,9 @@ def test_bot_identity_is_discovered_through_tenant_sdk_request():
 @pytest.mark.parametrize("response", [SimpleNamespace(success=lambda: False, code=999), SimpleNamespace(success=lambda: True, raw=SimpleNamespace(content=b"invalid"))])
 def test_identity_lookup_failure_keeps_group_admission_closed(response):
     channel = FeishuChannel(MessageBus(), {})
-    channel._api_client = Mock()
-    channel._api_client.request.return_value = response
-    channel._load_bot_identity()
+    client = Mock()
+    client.request.return_value = response
+    channel._load_bot_identity(client)
     assert not channel._mentions_bot([{"name": "colleague"}])
 
 

@@ -223,9 +223,10 @@ class FeishuChannel(Channel):
             logger.error("Feishu channel requires app_id and app_secret")
             return
 
-        self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(10).build()
+        self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
         if not self._bot_open_id:
-            await asyncio.to_thread(self._load_bot_identity)
+            identity_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(10).build()
+            await asyncio.to_thread(self._load_bot_identity, identity_client)
         logger.info("[Feishu] using domain: %s", domain)
         self._main_loop = asyncio.get_event_loop()
 
@@ -1136,13 +1137,13 @@ class FeishuChannel(Channel):
                 return True
         return False
 
-    def _load_bot_identity(self) -> None:
+    def _load_bot_identity(self, client: Any) -> None:
         """Resolve the application's own bot through the SDK's tenant auth."""
         from lark_oapi import AccessTokenType, BaseRequest, HttpMethod
 
         try:
             request = BaseRequest.builder().http_method(HttpMethod.GET).uri("/open-apis/bot/v3/info").token_types({AccessTokenType.TENANT}).build()
-            response = self._api_client.request(request)
+            response = client.request(request)
             if not response.success():
                 logger.warning("[Feishu] bot identity lookup failed (code=%s)", response.code)
                 return
