@@ -108,6 +108,15 @@ def _runtime_channel_disconnected(runtime_config: dict[str, Any]) -> bool:
     return runtime_config.get(RUNTIME_CHANNEL_DISABLED_FLAG) is True and runtime_config.get("enabled") is False
 
 
+# Keys that config.yaml owns. The runtime config API persists a provider's
+# effective config so credentials survive restarts; without this list it also
+# persists these declared keys, which then shadow config.yaml on merge and make
+# a declarative change (for example a new bot_name) ineffective. They are
+# stripped when persisting and ignored when merging, so a value already stored
+# cannot revive.
+DECLARED_CHANNEL_KEYS = ("bot_name", "group_trigger")
+
+
 def merge_runtime_channel_configs(
     channels_config: dict[str, Any],
     channel_connections_config: Any,
@@ -127,7 +136,9 @@ def merge_runtime_channel_configs(
             continue
         existing = channels_config.get(provider)
         merged = dict(existing) if isinstance(existing, dict) else {}
-        merged.update(runtime_config)
+        # config.yaml owns the declared keys: ignore any stored copy so a
+        # declarative change (or removal) actually takes effect.
+        merged.update({key: value for key, value in runtime_config.items() if key not in DECLARED_CHANNEL_KEYS})
         channels_config[provider] = merged
 
 
