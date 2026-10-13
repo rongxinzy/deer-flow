@@ -11706,3 +11706,182 @@ def test_streaming_chat_never_publishes_hidden_memory_context(monkeypatch):
         assert [m.text for m in outbound_received] == ["All green. ▉", "All green."]
 
     _run(go())
+
+
+class _WatchdogChannel:
+    """A channel that reports a real connection state, as feishu does."""
+
+    def __init__(self, connected: bool) -> None:
+        self.connected = connected
+
+    @property
+    def is_connected(self) -> bool:
+        return self.connected
+
+
+def test_feishu_is_connected_tracks_the_lark_socket():
+    from app.channels.feishu import FeishuChannel
+
+    async def go():
+        channel = FeishuChannel(MessageBus(), config={})
+        channel._running = True
+        channel._thread = SimpleNamespace(is_alive=lambda: True)
+
+        # No ws client yet: nothing is connected.
+        assert channel.is_connected is False
+
+        channel._ws_client = SimpleNamespace(_conn=None)
+        assert channel.is_running is True
+        assert channel.is_connected is False
+
+        channel._ws_client = SimpleNamespace(_conn=object())
+        assert channel.is_connected is True
+
+        channel._running = False
+        assert channel.is_connected is False
+
+    _run(go())
+
+
+def test_channel_watchdog_restarts_a_channel_that_dropped():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
+        service._watchdog_ever_connected = {"feishu": True}
+        service._watchdog_failure_threshold = 2
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        assert restarted == [], "a single missed round must not restart the channel"
+        await service._watchdog_round()
+        assert restarted == ["feishu"]
+        assert service._watchdog_ever_connected["feishu"] is False
+
+    _run(go())
+
+
+def test_channel_watchdog_retries_after_a_deferred_restart():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
+        service._watchdog_ever_connected = {"feishu": True}
+        service._watchdog_failure_threshold = 1
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return False
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        await service._watchdog_round()
+        assert restarted == ["feishu", "feishu"], "a deferred restart must stay eligible"
+        assert service._watchdog_ever_connected["feishu"] is True
+
+    _run(go())
+
+
+def test_channel_watchdog_leaves_never_connected_channels_alone():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
+        service._watchdog_failure_threshold = 1
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        for _ in range(3):
+            await service._watchdog_round()
+        assert restarted == [], "a platform outage must not trigger restart churn"
+
+    _run(go())
+
+
+def test_channel_watchdog_skips_channels_without_a_connection_signal():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        # A channel whose is_connected is only the base definition: no signal.
+        service._channels = {"feishu": SimpleNamespace(is_connected=False)}
+        service._watchdog_ever_connected = {"feishu": True}
+        service._watchdog_failure_threshold = 1
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        for _ in range(2):
+            await service._watchdog_round()
+        assert restarted == [], "the watchdog only acts on channels with a real signal"
+
+    _run(go())
+
+
+def test_channel_watchdog_resets_after_a_healthy_round():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        channel = _WatchdogChannel(connected=False)
+        service._channels = {"feishu": channel}
+        service._watchdog_failure_threshold = 2
+        service._watchdog_ever_connected = {"feishu": True}
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        channel.connected = True
+        await service._watchdog_round()
+        channel.connected = False
+        await service._watchdog_round()
+        assert restarted == [], "a healthy round must clear the failure count"
+
+    _run(go())
+
+
+def test_get_status_reports_connection_state():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={"feishu": {"enabled": True}})
+        service._channels = {"feishu": SimpleNamespace(is_running=True, is_connected=False)}
+        status = service.get_status()
+        assert status["channels"]["feishu"] == {"enabled": True, "running": True, "connected": False}
+
+    _run(go())
