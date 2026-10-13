@@ -13,6 +13,7 @@ import weakref
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, ClassVar, Literal
+from urllib.parse import unquote
 
 from pydantic import PrivateAttr
 
@@ -322,11 +323,12 @@ class OpenVikingMemoryManager(MemoryManager):
             return {"facts": []}
         try:
             facts: list[dict[str, Any]] = []
-            for uri in self._scope_uris(user_id, agent_name):
-                content = self._call_openviking(self._client, "read", uri=uri)
-                if isinstance(content, bytes | bytearray):
-                    content = content.decode("utf-8", errors="replace")
-                facts.append({"id": uri, "content": str(content), "source": uri})
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                for uri in self._scope_uris(user_id, agent_name):
+                    content = self._call_openviking(self._client, "read", uri=uri)
+                    if isinstance(content, bytes | bytearray):
+                        content = content.decode("utf-8", errors="replace")
+                    facts.append({"id": uri, "content": str(content), "source": uri})
             return {"facts": facts}
         finally:
             self._end_operation()
@@ -349,11 +351,12 @@ class OpenVikingMemoryManager(MemoryManager):
         if not self._begin_operation():
             return {"facts": []}
         try:
-            self._remove_uri(
-                self._assert_own_uri(fact_id, user_id, agent_name),
-                user_id=user_id,
-                agent_name=agent_name,
-            )
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                self._remove_uri(
+                    self._assert_own_uri(fact_id, user_id, agent_name),
+                    user_id=user_id,
+                    agent_name=agent_name,
+                )
             return self.get_memory(user_id=user_id, agent_name=agent_name)
         finally:
             self._end_operation()
@@ -375,8 +378,9 @@ class OpenVikingMemoryManager(MemoryManager):
         if not self._begin_operation():
             return {"facts": []}
         try:
-            for root in self._scope_roots(user_id, agent_name):
-                self._remove_uri(root, user_id=user_id, agent_name=agent_name, recursive=True)
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                for root in self._scope_roots(user_id, agent_name):
+                    self._remove_uri(root, user_id=user_id, agent_name=agent_name, recursive=True)
             return {"facts": []}
         finally:
             self._end_operation()
@@ -393,7 +397,22 @@ class OpenVikingMemoryManager(MemoryManager):
         peer_id = self._resolve_scope(user_id, agent_name)
         if agent_name is not None or self._config.memory_scope == "requester":
             return [f"viking://~/peers/{peer_id}/memories"]
-        return ["viking://~/memories", "viking://~/peers"]
+        # Enumerate peer directories, but never treat the peers container as a
+        # memory root: it can also hold resources and curated shared memory.
+        roots = ["viking://~/memories"]
+        peers = self._call_openviking(self._client, "ls", uri="viking://~/peers", simple=True)
+        for uri in _extract_uris(peers):
+            prefix = "viking://~/peers/"
+            alias = self._credential_alias(uri)
+            peer = alias.removeprefix(prefix).rstrip("/")
+            if not alias.startswith(prefix) or not peer or "/" in peer or "\\" in peer or peer in {".", ".."} or unquote(peer) != peer:
+                raise MemoryManagerError("OpenViking returned an invalid peer directory")
+            if peer.startswith("df-shared-"):
+                continue
+            root = f"{prefix}{peer}/memories"
+            if root not in roots:
+                roots.append(root)
+        return roots
 
     def _scope_uris(self, user_id: str | None, agent_name: str | None) -> list[str]:
         """Every memory file URI under the actor's scope roots.
@@ -404,19 +423,44 @@ class OpenVikingMemoryManager(MemoryManager):
 
         uris: list[str] = []
         seen: set[str] = set()
-        for root in self._scope_roots(user_id, agent_name):
+        roots = self._scope_roots(user_id, agent_name)
+        for root in roots:
             for pattern in ("*", "**/*"):
                 result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
                 for uri in _extract_uris(result):
+                    self._validate_memory_uri(self._credential_alias(uri), [root])
                     if uri not in seen:
                         seen.add(uri)
                         uris.append(uri)
         return uris
 
     def _assert_own_uri(self, uri: str, user_id: str | None, agent_name: str | None) -> str:
-        if "\\" in uri or ".." in uri.split("/"):
+        roots = self._scope_roots(user_id, agent_name)
+        self._validate_memory_uri(self._credential_alias(uri), roots)
+        # OpenViking listings/search return concrete user URIs. Only accept a
+        # concrete id that this credential actually enumerated in this scope;
+        # otherwise a foreign user's identically named fact could alias ours.
+        if uri.startswith("viking://user/") and uri not in self._scope_uris(user_id, agent_name):
+            raise MemoryManagerError("refusing to modify a memory URI outside this actor's scope")
+        return uri
+
+    @staticmethod
+    def _credential_alias(uri: str) -> str:
+        if uri.startswith("viking://user/"):
+            user_and_path = uri[len("viking://user/") :].split("/", 1)
+            if len(user_and_path) == 2 and user_and_path[0]:
+                return "viking://~/" + user_and_path[1]
+        return uri
+
+    def _governance_peer(self, user_id: str | None, agent_name: str | None) -> str | None:
+        peer = self._resolve_scope(user_id, agent_name)
+        return peer if agent_name is not None or self._config.memory_scope == "requester" else None
+
+    @staticmethod
+    def _validate_memory_uri(uri: str, roots: list[str]) -> str:
+        if "\\" in uri or ".." in uri.split("/") or "." in uri.split("/") or unquote(uri) != uri or "?" in uri or "#" in uri:
             raise MemoryManagerError(f"refusing to modify a suspicious memory URI: {uri}")
-        if not any(uri == root or uri.startswith(root + "/") for root in self._scope_roots(user_id, agent_name)):
+        if not any(uri == root or uri.startswith(root + "/") for root in roots):
             raise MemoryManagerError(f"refusing to modify a memory URI outside this actor's scope: {uri}")
         return uri
 
@@ -430,7 +474,7 @@ class OpenVikingMemoryManager(MemoryManager):
     ) -> None:
         # Governance actions are explicit calls: unlike passive capture, a
         # failure surfaces instead of being dropped by the write policy.
-        peer_id = self._resolve_scope(user_id, agent_name)
+        peer_id = self._governance_peer(user_id, agent_name)
         with self._actor_peer_scope(peer_id):
             self._call_openviking(self._client, "rm", uri=uri, recursive=recursive)
 

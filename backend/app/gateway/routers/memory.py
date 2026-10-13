@@ -308,10 +308,10 @@ async def clear_memory(request: Request) -> MemoryResponse:
         memory_data = await asyncio.to_thread(manager.clear_memory, user_id=_resolve_memory_user_id(request))
     except NotImplementedError:
         raise _unsupported_501(manager, "clear memory") from None
-    except MemoryManagerError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except (MemoryConflictError, MemoryCorruptionError) as exc:
         raise _map_memory_manager_error(exc) from exc
+    except MemoryManagerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
 
@@ -371,12 +371,12 @@ async def delete_memory_fact_endpoint(fact_id: str, request: Request) -> MemoryR
         memory_data = await asyncio.to_thread(manager.delete_fact, fact_id, user_id=_resolve_memory_user_id(request))
     except NotImplementedError:
         raise _unsupported_501(manager, "delete fact") from None
-    except MemoryManagerError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except (MemoryConflictError, MemoryCorruptionError) as exc:
         raise _map_memory_manager_error(exc) from exc
+    except MemoryManagerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to delete memory fact.") from exc
 

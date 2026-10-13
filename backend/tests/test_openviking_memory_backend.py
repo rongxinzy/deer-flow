@@ -74,6 +74,12 @@ class _Client:
         self.reads.append(uri)
         return self.files[uri]
 
+    def ls(self, *, uri: str, simple: bool = False) -> list[str]:
+        if self.glob_error is not None:
+            raise self.glob_error
+        prefix = uri.rstrip("/") + "/"
+        return sorted({prefix + path[len(prefix) :].split("/", 1)[0] for path in self.files if path.startswith(prefix)})
+
     def rm(self, *, uri: str, recursive: bool = False, **_kwargs: Any) -> None:
         self.removals.append((uri, recursive))
 
@@ -1082,7 +1088,7 @@ def test_get_memory_without_an_agent_covers_the_whole_actor_bucket(
     # must list.
     document = manager.get_memory(user_id="alice")
 
-    assert [fact["id"] for fact in document["facts"]] == [user_level, agent_bucket, other_agent]
+    assert {fact["id"] for fact in document["facts"]} == {user_level, agent_bucket, other_agent}
 
 
 def test_unscoped_memory_refuses_a_different_deerflow_user(
@@ -1110,10 +1116,81 @@ def test_clear_memory_without_an_agent_covers_every_recall_root(
     official_integration: None,
 ) -> None:
     manager = _manager(tmp_path, monkeypatch)
+    manager._client.files = {
+        "viking://~/peers/research/memories/fact.md": "fact",
+        "viking://~/peers/research/resources/keep.md": "resource",
+        "viking://~/peers/df-shared-team/memories/keep.md": "curated",
+    }
 
     manager.clear_memory(user_id="alice")
 
-    assert manager._client.removals == [("viking://~/memories", True), ("viking://~/peers", True)]
+    assert manager._client.removals == [("viking://~/memories", True), ("viking://~/peers/research/memories", True)]
+
+
+@pytest.mark.parametrize("uri", ["viking://~/peers/research/resources/keep.md", "viking://~/peers/df-shared-team/memories/keep.md", "viking://~/peers/research/memories/%2e%2e/secret.md"])
+def test_unscoped_delete_refuses_non_memory_and_encoded_paths(tmp_path, monkeypatch, official_integration, uri):
+    manager = _manager(tmp_path, monkeypatch)
+    manager._client.files = {uri: "keep"}
+    with pytest.raises(MemoryManagerError):
+        manager.delete_fact(uri, user_id="alice")
+    assert manager._client.removals == []
+
+
+def test_unscoped_listing_excludes_non_memory_and_curated_buckets(tmp_path, monkeypatch, official_integration):
+    manager = _manager(tmp_path, monkeypatch)
+    own = "viking://~/peers/research/memories/fact.md"
+    manager._client.files = {
+        own: "fact",
+        "viking://~/peers/research/resources/keep.md": "resource",
+        "viking://~/peers/df-shared-team/memories/keep.md": "curated",
+    }
+    assert [fact["id"] for fact in manager.get_memory(user_id="alice")["facts"]] == [own]
+    assert manager._client.reads == [own]
+
+
+def test_listing_rejects_out_of_scope_glob_results(
+    tmp_path,
+    monkeypatch,
+    official_integration,
+):
+    manager = _manager(tmp_path, monkeypatch)
+    foreign = "viking://~/peers/other/memories/secret.md"
+    manager._client.files = {foreign: "private"}
+    monkeypatch.setattr(manager._client, "glob", lambda **kwargs: [foreign])
+    with pytest.raises(MemoryManagerError):
+        manager.get_memory(user_id="alice", agent_name="research")
+    assert manager._client.reads == []
+
+
+def test_governance_accepts_concrete_credential_uris_but_not_foreign_ids(tmp_path, monkeypatch, official_integration):
+    manager = _manager(tmp_path, monkeypatch)
+    own = "viking://user/ov-alice/peers/research/memories/fact.md"
+    manager._client.files = {own: "fact"}
+    monkeypatch.setattr(manager._client, "ls", lambda **kwargs: ["viking://user/ov-alice/peers/research"])
+    monkeypatch.setattr(manager._client, "glob", lambda **kwargs: [own] if "/research/" in kwargs["uri"] else [])
+    assert [fact["id"] for fact in manager.get_memory(user_id="alice")["facts"]] == [own]
+    with pytest.raises(MemoryManagerError):
+        manager.delete_fact(own.replace("ov-alice", "ov-bob"), user_id="alice")
+    assert manager._client.removals == []
+    manager.delete_fact(own, user_id="alice")
+    assert manager._client.removals == [(own, False)]
+
+
+@pytest.mark.parametrize("scope,expected_peer", [("instance", None), ("requester", "alice")])
+def test_governance_preserves_actor_scope(tmp_path, monkeypatch, official_integration, scope, expected_peer):
+    manager = _manager(tmp_path, monkeypatch, memory_scope=scope)
+    calls = []
+    original = manager._call_openviking
+
+    def record(client, method, **kwargs):
+        calls.append((method, _ACTOR_PEER.get()))
+        return original(client, method, **kwargs)
+
+    manager._call_openviking = record
+    with _use_actor_peer("unrelated"):
+        manager.get_memory(user_id="alice")
+        manager.clear_memory(user_id="alice")
+    assert calls and all(peer == expected_peer for _, peer in calls)
 
 
 def test_get_memory_surfaces_an_enumeration_failure(

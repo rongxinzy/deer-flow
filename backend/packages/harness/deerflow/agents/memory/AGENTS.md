@@ -8,6 +8,16 @@ to the constructed backend and require backend recreation to change.
 
 This directory owns memory capture, storage, retrieval, prompt injection, and model-driven memory tools.
 
+OpenViking governance validates the DeerFlow owner before directory enumeration.
+Instance-wide listing/clear enumerates peer memory roots individually, never
+reads or removes the peers container as memory, and preserves resources and
+curated shared buckets. Requester operations retain their actor-peer context;
+instance-wide operations clear an inherited actor restriction only after owner
+validation. Concrete OpenViking user fact IDs must occur in the credential's
+scoped enumeration before deletion. Reject traversal and encoded URI variants.
+Enumeration/read failures propagate, and Gateway conflict/corruption mappings
+must precede the generic memory-manager error handler.
+
 #### Main components
 
 - `manager.py` defines the backend-neutral `MemoryManager` contract.
