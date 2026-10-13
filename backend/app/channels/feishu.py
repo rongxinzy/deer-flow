@@ -870,6 +870,16 @@ class FeishuChannel(Channel):
             self._pending_clarifications.pop(key, None)
             return None
 
+    def _has_pending_clarification(self, chat_id: str, user_id: str) -> bool:
+        """Check admission without consuming a clarification before dispatch."""
+        now = time.time()
+        with self._thread_lock:
+            for pending in self._pending_clarifications.get(self._pending_key(chat_id, user_id), []):
+                created_at = pending.get("created_at")
+                if isinstance(created_at, (int, float)) and now - created_at <= PENDING_CLARIFICATION_TTL_SECONDS and self._non_empty_str(pending.get("topic_id")):
+                    return True
+        return False
+
     def _ensure_pending_thread_mapping(self, chat_id: str, user_id: str, pending: dict[str, Any]) -> None:
         store = self.config.get("channel_store")
         topic_id = self._non_empty_str(pending.get("topic_id"))
@@ -1164,6 +1174,8 @@ class FeishuChannel(Channel):
         thread_id: str | None,
         mentions: list[Any],
         chat_id: str | None = None,
+        user_id: str | None = None,
+        text: str = "",
     ) -> bool:
         """Require a bot mention or a persisted mapping to a bot conversation."""
         if chat_type == "p2p":
@@ -1174,6 +1186,8 @@ class FeishuChannel(Channel):
             _, mapped = self._resolve_topic_id(chat_id, "", root_id=root_id, parent_id=parent_id, thread_id=thread_id)
             if mapped:
                 return False
+        if chat_id and user_id and text and not (root_id or parent_id or thread_id) and not _is_feishu_command(strip_leading_mentions(text)) and not self._pending_connect_code(text) and self._has_pending_clarification(chat_id, user_id):
+            return False
         return not self._mentions_bot(mentions)
 
     def _on_message(self, event) -> None:
@@ -1272,6 +1286,8 @@ class FeishuChannel(Channel):
                 thread_id=feishu_thread_id,
                 mentions=mentions,
                 chat_id=chat_id,
+                user_id=sender_id,
+                text=text,
             ):
                 logger.info("[Feishu] group message without a bot mention ignored (chat_id=%s)", chat_id)
                 return

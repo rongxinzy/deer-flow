@@ -2909,7 +2909,7 @@ run_ownership:
 #     # Unknown identity never treats an arbitrary colleague mention as the bot.
 #     # bot_name: "数字员工"
 #     # group_trigger:
-#     #   mention_only: true   # default: @ the bot or reply in a mapped bot topic
+#     #   mention_only: true   # default: @ the bot, continue a mapped topic, or answer its clarification
 #
 #   slack:
 #     enabled: false

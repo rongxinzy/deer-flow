@@ -1,6 +1,7 @@
 """Group admission exercises the real inbound callback and persisted mappings."""
 
 import json
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -77,3 +78,32 @@ def test_identity_lookup_failure_keeps_group_admission_closed(response):
 def test_legacy_name_fallback_supports_dict_and_whitespace(name):
     channel = FeishuChannel(MessageBus(), {"bot_name": " Digital Employee "})
     assert channel._mentions_bot([{"name": name}])
+
+
+@pytest.mark.parametrize("pending_user,age,root_id,expected_calls", [("ou_user", 0, None, 1), ("ou_other", 0, None, 0), ("ou_user", 3600, None, 0), ("ou_user", 0, "om_colleague_topic", 0)])
+def test_pending_clarification_admits_only_fresh_same_user_plain_reply(monkeypatch, pending_user, age, root_id, expected_calls):
+    channel = FeishuChannel(MessageBus(), {})
+    channel._pending_clarifications[("oc_group", pending_user)] = [{"topic_id": "om_bot_topic", "thread_id": "df_thread", "created_at": time.time() - age}]
+    dispatch = Mock()
+    monkeypatch.setattr(channel, "_schedule_prepare_inbound", dispatch)
+    channel._on_message(_event(root_id=root_id))
+    assert dispatch.call_count == expected_calls
+    if expected_calls:
+        inbound = dispatch.call_args.args[1]
+        assert inbound.topic_id == "om_bot_topic"
+        assert inbound.metadata["resolved_from_pending_clarification"] is True
+        channel._on_message(_event())
+        assert dispatch.call_count == 1, "a consumed clarification cannot authorize another unmentioned message"
+
+
+def test_pending_clarification_does_not_admit_unmentioned_group_command(monkeypatch):
+    channel = FeishuChannel(MessageBus(), {})
+    pending = {"topic_id": "om_bot_topic", "thread_id": "df_thread", "created_at": time.time()}
+    channel._pending_clarifications[("oc_group", "ou_user")] = [pending]
+    dispatch = Mock()
+    monkeypatch.setattr(channel, "_schedule_prepare_inbound", dispatch)
+    event = _event()
+    event.event.message.content = json.dumps({"text": "/new"})
+    channel._on_message(event)
+    dispatch.assert_not_called()
+    assert channel._pending_clarifications[("oc_group", "ou_user")] == [pending]

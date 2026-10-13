@@ -8,7 +8,11 @@ event loop at startup; `bot_open_id` overrides discovery, and explicit `bot_name
 is a legacy fallback only when no ID is known. Accept dict and SDK mention
 objects. Unknown identity must not accept arbitrary mentions. Unmentioned topic
 replies require an existing `ChannelStore` mapping; provider thread IDs alone
-do not prove a bot conversation. Private chats and explicit mention-only opt-out
+do not prove a bot conversation. A same-user top-level chat reply may also
+answer a fresh pending clarification; inspect without consuming it at admission,
+then let normal dispatch consume it once. Expired, other-user and unrelated-topic
+pending state cannot authorize admission, nor can bare commands or connect codes.
+Private chats and explicit mention-only opt-out
 remain ungated; the group gate precedes commands and connect-code handling.
 
 **Architecture**: Channels communicate with Gateway through the `langgraph-sdk` HTTP client (same as the frontend), ensuring threads are created and managed server-side. The internal SDK client injects process-local internal auth plus a matching CSRF cookie/header pair so Gateway accepts state-changing thread/run requests from channel workers without relying on browser session cookies.
