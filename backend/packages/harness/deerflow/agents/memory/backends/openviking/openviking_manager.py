@@ -724,7 +724,7 @@ class OpenVikingMemoryManager(MemoryManager):
 
     def _actor_peer_scope(
         self,
-        peer_id: str,
+        peer_id: str | None,
     ) -> AbstractContextManager[None]:
         return self._use_actor_peer(peer_id)
 
