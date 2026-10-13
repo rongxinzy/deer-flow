@@ -63,6 +63,7 @@ class FeishuChannel(Channel):
         self._thread: threading.Thread | None = None
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self._api_client = None
+        self._bot_open_id = self._non_empty_str(config.get("bot_open_id"))
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
         self._Emoji = None
@@ -200,7 +201,9 @@ class FeishuChannel(Channel):
             logger.error("Feishu channel requires app_id and app_secret")
             return
 
-        self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
+        self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(10).build()
+        if not self._bot_open_id:
+            await asyncio.to_thread(self._load_bot_identity)
         logger.info("[Feishu] using domain: %s", domain)
         self._main_loop = asyncio.get_event_loop()
 
@@ -1064,25 +1067,40 @@ class FeishuChannel(Channel):
         return bool(trigger)
 
     def _mentions_bot(self, mentions: list[Any]) -> bool:
-        """Whether one of the message's mentions addresses this bot.
-
-        Feishu leaves the mention in the text itself (``@_user_1``) and, unlike
-        Slack/Discord, cannot tell the bot's mention from another user's there —
-        so the signal is the event's ``mentions`` list. Matching it needs the
-        bot's display name; with none configured we cannot be precise and accept
-        any mention as addressing the bot.
-        """
+        """Match stable bot identity; an explicit name is a legacy fallback."""
         if not mentions:
             return False
         configured = self.config.get("bot_name")
-        target = configured.strip().lstrip("@") if isinstance(configured, str) and configured.strip() else ""
-        if not target:
-            return True
+        target = configured.strip().lstrip("@").strip().casefold() if isinstance(configured, str) else ""
         for mention in mentions:
-            name = getattr(mention, "name", None)
-            if isinstance(name, str) and name.strip().lstrip("@") == target:
+            identity = mention.get("id") if isinstance(mention, dict) else getattr(mention, "id", None)
+            open_id = identity.get("open_id") if isinstance(identity, dict) else getattr(identity, "open_id", None)
+            if self._bot_open_id:
+                if open_id == self._bot_open_id:
+                    return True
+                continue
+            name = mention.get("name") if isinstance(mention, dict) else getattr(mention, "name", None)
+            if target and isinstance(name, str) and name.strip().lstrip("@").strip().casefold() == target:
                 return True
         return False
+
+    def _load_bot_identity(self) -> None:
+        """Resolve the application's own bot through the SDK's tenant auth."""
+        from lark_oapi import AccessTokenType, BaseRequest, HttpMethod
+
+        try:
+            request = BaseRequest.builder().http_method(HttpMethod.GET).uri("/open-apis/bot/v3/info").token_types({AccessTokenType.TENANT}).build()
+            response = self._api_client.request(request)
+            if not response.success():
+                logger.warning("[Feishu] bot identity lookup failed (code=%s)", response.code)
+                return
+            payload = json.loads(response.raw.content)
+            bot = payload.get("bot", {})
+            self._bot_open_id = self._non_empty_str(bot.get("open_id"))
+            if not self._bot_open_id:
+                logger.warning("[Feishu] bot identity lookup returned no open_id; configure bot_open_id or bot_name for group mentions")
+        except Exception:
+            logger.warning("[Feishu] could not resolve bot identity; configure bot_open_id or bot_name for group mentions")
 
     def _should_ignore_group_message(
         self,
@@ -1092,19 +1110,17 @@ class FeishuChannel(Channel):
         parent_id: str | None,
         thread_id: str | None,
         mentions: list[Any],
+        chat_id: str | None = None,
     ) -> bool:
-        """Drop a group message that neither @s the bot nor continues a thread.
-
-        Direct messages are never gated. A reply inside an existing thread keeps
-        the conversation going, so only a fresh top-level group message needs the
-        mention.
-        """
+        """Require a bot mention or a persisted mapping to a bot conversation."""
         if chat_type == "p2p":
             return False
         if not self._group_mention_only():
             return False
-        if root_id or parent_id or thread_id:
-            return False
+        if chat_id and (root_id or parent_id or thread_id):
+            _, mapped = self._resolve_topic_id(chat_id, "", root_id=root_id, parent_id=parent_id, thread_id=thread_id)
+            if mapped:
+                return False
         return not self._mentions_bot(mentions)
 
     def _on_message(self, event) -> None:
@@ -1202,6 +1218,7 @@ class FeishuChannel(Channel):
                 parent_id=parent_id,
                 thread_id=feishu_thread_id,
                 mentions=mentions,
+                chat_id=chat_id,
             ):
                 logger.info("[Feishu] group message without a bot mention ignored (chat_id=%s)", chat_id)
                 return

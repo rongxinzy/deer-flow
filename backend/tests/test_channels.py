@@ -11737,16 +11737,16 @@ def test_feishu_group_gate_helpers():
     assert ignore(mentions=[SimpleNamespace(name="同事")]) is True, "a mention of a colleague is not for the bot"
     assert ignore(mentions=[SimpleNamespace(name="@数字员工")]) is False
     assert ignore(chat_type="p2p") is False, "direct messages are never gated"
-    assert ignore(root_id="om_root") is False, "a thread reply continues the conversation"
-    assert ignore(parent_id="om_parent") is False
+    assert ignore(root_id="om_root") is True, "an unrelated thread does not address the bot"
+    assert ignore(parent_id="om_parent") is True
 
 
-def test_feishu_group_gate_accepts_any_mention_without_a_bot_name():
+def test_feishu_group_gate_requires_identity_without_a_bot_name():
     from app.channels.feishu import FeishuChannel
 
     channel = FeishuChannel(MessageBus(), config={})
     assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[]) is True
-    assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[SimpleNamespace(name="同事")]) is False
+    assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[SimpleNamespace(name="同事")]) is True
 
 
 def test_feishu_group_gate_can_be_disabled():
