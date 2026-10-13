@@ -496,11 +496,14 @@ def _insert_extra(chain: list[AgentMiddleware], extras: list[AgentMiddleware]) -
         else:
             unanchored.append(mw)
 
-    # Unanchored → before ClarificationMiddleware
-    clarification_idx = next(i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware))
-    for mw in unanchored:
-        chain.insert(clarification_idx, mw)
-        clarification_idx += 1
+    # Unanchored → before ClarificationMiddleware. The anchor may not be on the
+    # chain yet (configured extensions are attached before it is appended), so
+    # only look it up when there is something to place.
+    if unanchored:
+        clarification_idx = next(i for i, m in enumerate(chain) if isinstance(m, ClarificationMiddleware))
+        for mw in unanchored:
+            chain.insert(clarification_idx, mw)
+            clarification_idx += 1
 
     # Anchored → iterative insertion (supports external-to-external anchoring)
     pending = list(anchored)

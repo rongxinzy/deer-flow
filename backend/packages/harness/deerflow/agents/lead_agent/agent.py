@@ -753,16 +753,7 @@ def build_middlewares(
 
     configured_middlewares = load_configured_extension_middlewares(resolved_app_config)
     if configured_middlewares:
-        # Configured extensions are appended to the tail by default, but one may
-        # declare an ordering anchor (@Next/@Prev). Honor it: the governance
-        # middleware must run *before* DynamicContextMiddleware, whose
-        # before_agent performs the first memory recall and needs the trusted
-        # requester published. Unanchored extensions keep the tail placement.
-        anchored = [mw for mw in configured_middlewares if getattr(type(mw), "_next_anchor", None) or getattr(type(mw), "_prev_anchor", None)]
-        if anchored:
-            _insert_extra(middlewares, anchored)
-        tail = [mw for mw in configured_middlewares if mw not in anchored]
-        middlewares.extend(tail)
+        _attach_configured_middlewares(middlewares, configured_middlewares)
 
     # LLMErrorHandlingMiddleware gives a run one model-boundary retry for a true
     # empty stop. Keep a terminal fallback for post-tool responses that still have
