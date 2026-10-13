@@ -65,6 +65,7 @@ class FeishuChannel(Channel):
         self._ws_client = None
         self._ws_loop: asyncio.AbstractEventLoop | None = None
         self._api_client = None
+        self._bot_open_id = self._non_empty_str(config.get("bot_open_id"))
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
         self._Emoji = None
@@ -223,6 +224,9 @@ class FeishuChannel(Channel):
             return
 
         self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
+        if not self._bot_open_id:
+            identity_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(10).build()
+            await asyncio.to_thread(self._load_bot_identity, identity_client)
         logger.info("[Feishu] using domain: %s", domain)
         self._main_loop = asyncio.get_event_loop()
 
@@ -866,6 +870,16 @@ class FeishuChannel(Channel):
             self._pending_clarifications.pop(key, None)
             return None
 
+    def _has_pending_clarification(self, chat_id: str, user_id: str) -> bool:
+        """Check admission without consuming a clarification before dispatch."""
+        now = time.time()
+        with self._thread_lock:
+            for pending in self._pending_clarifications.get(self._pending_key(chat_id, user_id), []):
+                created_at = pending.get("created_at")
+                if isinstance(created_at, (int, float)) and now - created_at <= PENDING_CLARIFICATION_TTL_SECONDS and self._non_empty_str(pending.get("topic_id")):
+                    return True
+        return False
+
     def _ensure_pending_thread_mapping(self, chat_id: str, user_id: str, pending: dict[str, Any]) -> None:
         store = self.config.get("channel_store")
         topic_id = self._non_empty_str(pending.get("topic_id"))
@@ -1106,6 +1120,76 @@ class FeishuChannel(Channel):
         await self._reply_card(message_id, "Feishu connected to DeerFlow.")
         return True
 
+    def _group_mention_only(self) -> bool:
+        """Whether a fresh group message must address the bot to be handled."""
+        trigger = self.config.get("group_trigger")
+        if isinstance(trigger, dict):
+            return bool(trigger.get("mention_only", True))
+        if trigger is None:
+            return True
+        return bool(trigger)
+
+    def _mentions_bot(self, mentions: list[Any]) -> bool:
+        """Match stable bot identity; an explicit name is a legacy fallback."""
+        if not mentions:
+            return False
+        configured = self.config.get("bot_name")
+        target = configured.strip().lstrip("@").strip().casefold() if isinstance(configured, str) else ""
+        for mention in mentions:
+            identity = mention.get("id") if isinstance(mention, dict) else getattr(mention, "id", None)
+            open_id = identity.get("open_id") if isinstance(identity, dict) else getattr(identity, "open_id", None)
+            if self._bot_open_id:
+                if open_id == self._bot_open_id:
+                    return True
+                continue
+            name = mention.get("name") if isinstance(mention, dict) else getattr(mention, "name", None)
+            if target and isinstance(name, str) and name.strip().lstrip("@").strip().casefold() == target:
+                return True
+        return False
+
+    def _load_bot_identity(self, client: Any) -> None:
+        """Resolve the application's own bot through the SDK's tenant auth."""
+        from lark_oapi import AccessTokenType, BaseRequest, HttpMethod
+
+        try:
+            request = BaseRequest.builder().http_method(HttpMethod.GET).uri("/open-apis/bot/v3/info").token_types({AccessTokenType.TENANT}).build()
+            response = client.request(request)
+            if not response.success():
+                logger.warning("[Feishu] bot identity lookup failed (code=%s)", response.code)
+                return
+            payload = json.loads(response.raw.content)
+            bot = payload.get("bot", {})
+            self._bot_open_id = self._non_empty_str(bot.get("open_id"))
+            if not self._bot_open_id:
+                logger.warning("[Feishu] bot identity lookup returned no open_id; configure bot_open_id or bot_name for group mentions")
+        except Exception:
+            logger.warning("[Feishu] could not resolve bot identity; configure bot_open_id or bot_name for group mentions")
+
+    def _should_ignore_group_message(
+        self,
+        *,
+        chat_type: str | None,
+        root_id: str | None,
+        parent_id: str | None,
+        thread_id: str | None,
+        mentions: list[Any],
+        chat_id: str | None = None,
+        user_id: str | None = None,
+        text: str = "",
+    ) -> bool:
+        """Require a bot mention or a persisted mapping to a bot conversation."""
+        if chat_type == "p2p":
+            return False
+        if not self._group_mention_only():
+            return False
+        if chat_id and (root_id or parent_id or thread_id):
+            _, mapped = self._resolve_topic_id(chat_id, "", root_id=root_id, parent_id=parent_id, thread_id=thread_id)
+            if mapped:
+                return False
+        if chat_id and user_id and text and not (root_id or parent_id or thread_id) and not _is_feishu_command(strip_leading_mentions(text)) and not self._pending_connect_code(text) and self._has_pending_clarification(chat_id, user_id):
+            return False
+        return not self._mentions_bot(mentions)
+
     def _on_message(self, event) -> None:
         """Called by lark-oapi when a message is received (runs in lark thread)."""
         try:
@@ -1192,6 +1276,20 @@ class FeishuChannel(Channel):
 
             if not (text or files_list):
                 logger.info("[Feishu] empty text, ignoring message")
+                return
+
+            mentions = getattr(message, "mentions", None) or []
+            if self._should_ignore_group_message(
+                chat_type=chat_type,
+                root_id=root_id,
+                parent_id=parent_id,
+                thread_id=feishu_thread_id,
+                mentions=mentions,
+                chat_id=chat_id,
+                user_id=sender_id,
+                text=text,
+            ):
+                logger.info("[Feishu] group message without a bot mention ignored (chat_id=%s)", chat_id)
                 return
 
             connect_code = self._pending_connect_code(text)

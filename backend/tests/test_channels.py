@@ -11708,6 +11708,72 @@ def test_streaming_chat_never_publishes_hidden_memory_context(monkeypatch):
     _run(go())
 
 
+def _feishu_group_event(*, mentions=(), chat_type="group", root_id=None, content_text="hello"):
+    message = SimpleNamespace(
+        chat_id="oc_group",
+        message_id="om_1",
+        chat_type=chat_type,
+        content=json.dumps({"text": content_text}),
+        root_id=root_id,
+        parent_id=None,
+        thread_id=None,
+        mentions=list(mentions),
+    )
+    sender = SimpleNamespace(sender_id=SimpleNamespace(open_id="ou_user"))
+    return SimpleNamespace(event=SimpleNamespace(sender=sender, message=message))
+
+
+def test_feishu_group_gate_helpers():
+    from app.channels.feishu import FeishuChannel
+
+    channel = FeishuChannel(MessageBus(), config={"group_trigger": {"mention_only": True}, "bot_name": "数字员工"})
+
+    def ignore(**kwargs):
+        base = {"chat_type": "group", "root_id": None, "parent_id": None, "thread_id": None, "mentions": []}
+        base.update(kwargs)
+        return channel._should_ignore_group_message(**base)
+
+    assert ignore() is True, "a fresh group message without a mention is ignored"
+    assert ignore(mentions=[SimpleNamespace(name="同事")]) is True, "a mention of a colleague is not for the bot"
+    assert ignore(mentions=[SimpleNamespace(name="@数字员工")]) is False
+    assert ignore(chat_type="p2p") is False, "direct messages are never gated"
+    assert ignore(root_id="om_root") is True, "an unrelated thread does not address the bot"
+    assert ignore(parent_id="om_parent") is True
+
+
+def test_feishu_group_gate_requires_identity_without_a_bot_name():
+    from app.channels.feishu import FeishuChannel
+
+    channel = FeishuChannel(MessageBus(), config={})
+    assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[]) is True
+    assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[SimpleNamespace(name="同事")]) is True
+
+
+def test_feishu_group_gate_can_be_disabled():
+    from app.channels.feishu import FeishuChannel
+
+    channel = FeishuChannel(MessageBus(), config={"group_trigger": {"mention_only": False}})
+    assert channel._should_ignore_group_message(chat_type="group", root_id=None, parent_id=None, thread_id=None, mentions=[]) is False
+
+
+def test_feishu_on_message_drops_unmentioned_group_message(monkeypatch):
+    from app.channels.feishu import FeishuChannel
+
+    async def go():
+        channel = FeishuChannel(MessageBus(), config={"group_trigger": {"mention_only": True}, "bot_name": "数字员工"})
+        prepared: list[str] = []
+        monkeypatch.setattr(channel, "_schedule_prepare_inbound", lambda msg_id, inbound: prepared.append(msg_id))
+        monkeypatch.setattr(channel, "_resolve_topic_id", lambda *args, **kwargs: (None, False))
+
+        channel._on_message(_feishu_group_event(mentions=[]))
+        assert prepared == [], "an unmentioned group message must not be dispatched"
+
+        channel._on_message(_feishu_group_event(mentions=[SimpleNamespace(name="数字员工")]))
+        assert prepared == ["om_1"], "an @-ed group message is dispatched"
+
+    _run(go())
+
+
 class _WatchdogChannel:
     """A channel that reports a real connection state, as feishu does."""
 

@@ -22,6 +22,19 @@ from app.channels.store import ChannelStore
 from deerflow.uploads.manager import PathTraversalError
 
 
+def _parser_config(**overrides):
+    return {"app_id": "test", "app_secret": "test", "bot_open_id": "ou_test_bot", **overrides}
+
+
+def _parser_event():
+    event = MagicMock()
+    event.event.message.chat_type = "group"
+    event.event.message.mentions = [{"id": {"open_id": "ou_test_bot"}}]
+    event.event.message.parent_id = None
+    event.event.message.thread_id = None
+    return event
+
+
 def _pending(
     topic_id: str,
     *,
@@ -64,7 +77,7 @@ def _feishu_stream_response(filename: str, stream):
 
 
 def _feishu_file_channel(*responses):
-    channel = FeishuChannel(MessageBus(), {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(MessageBus(), _parser_config())
     channel._GetMessageResourceRequest = MagicMock()
     builder = MagicMock()
     builder.message_id.return_value = builder
@@ -127,11 +140,11 @@ def test_feishu_receive_single_file_skips_release_for_mounted_sandbox(tmp_path, 
 
 def test_feishu_on_message_plain_text():
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
     # Create mock event
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -157,7 +170,7 @@ def test_feishu_on_message_plain_text():
 
 def test_feishu_is_not_running_when_ws_thread_exits():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     channel._running = True
     channel._thread = MagicMock()
     channel._thread.is_alive.return_value = False
@@ -169,7 +182,7 @@ def test_feishu_event_handler_ignores_non_content_message_events():
     import lark_oapi as lark
 
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
 
     event_handler = channel._build_event_handler(lark)
 
@@ -182,11 +195,11 @@ def test_feishu_event_handler_ignores_non_content_message_events():
 
 def test_feishu_on_message_rich_text():
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
     # Create mock event
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -216,7 +229,7 @@ def test_feishu_on_message_rich_text():
 def test_feishu_receive_file_replaces_placeholders_in_order():
     async def go():
         bus = MessageBus()
-        channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+        channel = FeishuChannel(bus, _parser_config())
 
         msg = InboundMessage(
             channel_name="feishu",
@@ -498,9 +511,9 @@ def test_feishu_receive_file_rejects_oversized_resource(tmp_path, monkeypatch):
 
 def test_feishu_on_message_extracts_image_and_file_keys():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -544,10 +557,10 @@ def test_feishu_on_message_reuses_stored_parent_topic_for_card_replies():
     )
     channel = FeishuChannel(
         bus,
-        {"app_id": "test", "app_secret": "test", "channel_store": store},
+        _parser_config(channel_store=store),
     )
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_reply"
     event.event.message.root_id = "om_unknown_root"
@@ -576,7 +589,7 @@ def _make_text_event(
     parent_id: str | None = None,
     thread_id: str | None = None,
 ):
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = chat_id
     event.event.message.message_id = message_id
     event.event.message.root_id = root_id
@@ -597,7 +610,7 @@ def _make_file_event(
     parent_id: str | None = None,
     thread_id: str | None = None,
 ):
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = chat_id
     event.event.message.message_id = message_id
     event.event.message.root_id = root_id
@@ -614,7 +627,7 @@ def test_feishu_batches_top_level_file_messages_from_same_user(monkeypatch):
         # Keep both callbacks inside the batch window even on a busy CI runner.
         monkeypatch.setattr("app.channels.feishu.time.time", lambda: 1_000.0)
         bus = MessageBus()
-        channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+        channel = FeishuChannel(bus, _parser_config())
         channel._main_loop = asyncio.get_running_loop()
         channel._add_reaction = AsyncMock()
         channel._ensure_running_card_started = MagicMock()
@@ -648,10 +661,10 @@ def test_feishu_batches_top_level_file_messages_from_same_user(monkeypatch):
 
 def test_feishu_rich_text_file_message_does_not_enter_batch():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     channel._schedule_prepare_inbound = MagicMock()
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_rich_file"
     event.event.message.root_id = None
@@ -682,7 +695,7 @@ def test_feishu_file_batch_window_expiry_starts_new_topic(monkeypatch):
     async def go():
         monkeypatch.setattr("app.channels.feishu.FEISHU_INBOUND_BATCH_WINDOW_SECONDS", 0.01)
         bus = MessageBus()
-        channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+        channel = FeishuChannel(bus, _parser_config())
         channel._main_loop = asyncio.get_running_loop()
         channel._add_reaction = AsyncMock()
         channel._ensure_running_card_started = MagicMock()
@@ -709,7 +722,7 @@ def test_feishu_explicit_file_reply_does_not_enter_batch(monkeypatch):
     async def go():
         monkeypatch.setattr("app.channels.feishu.FEISHU_INBOUND_BATCH_WINDOW_SECONDS", 10.0)
         bus = MessageBus()
-        channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+        channel = FeishuChannel(bus, _parser_config())
         channel._main_loop = asyncio.get_running_loop()
         channel._add_reaction = AsyncMock()
         channel._ensure_running_card_started = MagicMock()
@@ -731,7 +744,7 @@ def test_feishu_expired_file_batch_does_not_get_overwritten(monkeypatch):
     monkeypatch.setattr("app.channels.feishu.time.time", lambda: now)
 
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     channel._schedule_batch_flush = MagicMock()
     channel._schedule_prepare_inbound = MagicMock()
 
@@ -771,7 +784,7 @@ def test_feishu_plain_reply_consumes_pending_clarification_topic():
     bus = MessageBus()
     store = ChannelStore(path=Path(tempfile.mkdtemp()) / "store.json")
     store.set_thread_id("feishu", "chat_1", "deer-thread-1", topic_id="om_original", user_id="user_1")
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test", "channel_store": store})
+    channel = FeishuChannel(bus, _parser_config(channel_store=store))
     channel._pending_clarifications[channel._pending_key("chat_1", "user_1")] = [_pending("om_original", thread_id="deer-thread-1", card_message_id="om_card")]
 
     with pytest.MonkeyPatch.context() as m:
@@ -789,7 +802,7 @@ def test_feishu_plain_reply_consumes_pending_clarification_topic():
 
 def test_feishu_pending_clarification_is_consumed_once():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     channel._pending_clarifications[channel._pending_key("chat_1", "user_1")] = [_pending("om_original", thread_id="deer-thread-1", card_message_id="om_card")]
 
     with pytest.MonkeyPatch.context() as m:
@@ -819,7 +832,7 @@ def test_feishu_pending_clarification_is_consumed_once():
 
 def test_feishu_expired_pending_clarification_is_ignored(monkeypatch):
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     monkeypatch.setattr("app.channels.feishu.time.time", lambda: 10_000.0)
     channel._pending_clarifications[channel._pending_key("chat_1", "user_1")] = [_pending("om_original", thread_id="deer-thread-1", card_message_id="om_card", created_at=0.0)]
 
@@ -836,7 +849,7 @@ def test_feishu_expired_pending_clarification_is_ignored(monkeypatch):
 
 def test_feishu_command_does_not_consume_pending_clarification():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     key = channel._pending_key("chat_1", "user_1")
     channel._pending_clarifications[key] = [_pending("om_original", thread_id="deer-thread-1", card_message_id="om_card")]
 
@@ -854,7 +867,7 @@ def test_feishu_command_does_not_consume_pending_clarification():
 
 def test_feishu_remembers_pending_clarification_only_after_final_card_success():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     outbound = OutboundMessage(
         channel_name="feishu",
         chat_id="chat_1",
@@ -881,7 +894,7 @@ def test_feishu_remembers_pending_clarification_only_after_final_card_success():
 
 def test_feishu_multiple_pending_clarifications_are_consumed_in_order():
     bus = MessageBus()
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test"})
+    channel = FeishuChannel(bus, _parser_config())
     key = channel._pending_key("chat_1", "user_1")
     channel._pending_clarifications[key] = [
         _pending("om_first", thread_id="deer-thread-1"),
@@ -908,7 +921,7 @@ def test_feishu_explicit_reply_prefers_stored_mapping_over_pending():
     bus = MessageBus()
     store = ChannelStore(path=Path(tempfile.mkdtemp()) / "store.json")
     store.set_thread_id("feishu", "chat_1", "deer-thread-card", topic_id="om_card", user_id="user_1")
-    channel = FeishuChannel(bus, {"app_id": "test", "app_secret": "test", "channel_store": store})
+    channel = FeishuChannel(bus, _parser_config(channel_store=store))
     key = channel._pending_key("chat_1", "user_1")
     channel._pending_clarifications[key] = [_pending("om_pending", thread_id="deer-thread-pending")]
 
@@ -934,10 +947,10 @@ def test_feishu_explicit_reply_prefers_stored_mapping_over_pending():
 def test_feishu_recognizes_all_known_slash_commands(command):
     """Every entry in KNOWN_CHANNEL_COMMANDS must be classified as a command."""
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -965,10 +978,10 @@ def test_feishu_recognizes_all_known_slash_commands(command):
 def test_feishu_treats_unknown_slash_text_as_chat(text):
     """Slash-prefixed text that is not a known command must be classified as CHAT."""
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -990,10 +1003,10 @@ def test_feishu_leading_mention_before_command_classifies_and_strips(text):
     (im.message.group_at_msg requires @bot). It must classify as COMMAND and the
     inbound must carry the bare command so ChannelManager parses it."""
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
@@ -1014,10 +1027,10 @@ def test_feishu_leading_mention_before_chat_keeps_mention():
     """A mentioned non-command stays CHAT and keeps the mention so the agent still
     sees who was addressed (only the command path is stripped)."""
     bus = MessageBus()
-    config = {"app_id": "test", "app_secret": "test"}
+    config = _parser_config()
     channel = FeishuChannel(bus, config)
 
-    event = MagicMock()
+    event = _parser_event()
     event.event.message.chat_id = "chat_1"
     event.event.message.message_id = "msg_1"
     event.event.message.root_id = None
