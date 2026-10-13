@@ -95,6 +95,29 @@ def require_current_user() -> CurrentUser:
 # Effective user_id helpers (filesystem isolation)
 # ---------------------------------------------------------------------------
 
+# Trusted requester: the AEP user this turn acts on behalf of, published by the
+# governance middleware once it resolves the identity chain. Distinct from the
+# storage owner in ``_current_user``: memory scopes by requester, while files,
+# threads and channel connections stay under the owner. ``None`` means "not
+# resolved" and must stay distinguishable from a resolved id.
+_requester_id: Final[ContextVar[str | None]] = ContextVar("deerflow_requester_id", default=None)
+
+
+def set_requester_id(requester_id: str | None) -> Token[str | None]:
+    """Publish the resolved requester for this task."""
+    return _requester_id.set(requester_id)
+
+
+def reset_requester_id(token: Token[str | None]) -> None:
+    """Undo a previous :func:`set_requester_id`."""
+    _requester_id.reset(token)
+
+
+def get_requester_id() -> str | None:
+    """Return the resolved requester for this task, or ``None`` when unresolved."""
+    return _requester_id.get()
+
+
 DEFAULT_USER_ID: Final[str] = "default"
 
 

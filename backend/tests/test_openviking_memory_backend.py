@@ -1045,8 +1045,8 @@ def test_requester_scope_partitions_memory_per_user(
 ) -> None:
     manager = _manager(tmp_path, monkeypatch, memory_scope="requester")
 
-    manager.get_context("alice", agent_name="research")
-    manager.get_context("bob", agent_name="research")
+    manager.get_context("alice", agent_name="research", requester_id="alice")
+    manager.get_context("bob", agent_name="research", requester_id="bob")
 
     assert manager._retriever.calls[0]["target_uri"] == ["viking://~/peers/alice/memories"]
     assert manager._retriever.calls[1]["target_uri"] == ["viking://~/peers/bob/memories"]
@@ -1056,8 +1056,12 @@ def test_requester_scope_partitions_memory_per_user(
 
     # The write side must partition too: the recorder is handed the requester
     # as both peer and actor, under a per-requester session id.
-    manager.add("thread-1", [HumanMessage("alice fact", id="h1")], user_id="alice", agent_name="research")
-    manager.add("thread-2", [HumanMessage("bob fact", id="h2")], user_id="bob", agent_name="research")
+    manager.add(
+        "thread-1", [HumanMessage("alice fact", id="h1")], user_id="alice", agent_name="research", requester_id="alice"
+    )
+    manager.add(
+        "thread-2", [HumanMessage("bob fact", id="h2")], user_id="bob", agent_name="research", requester_id="bob"
+    )
 
     alice_write, bob_write = manager._recorder.calls[0], manager._recorder.calls[1]
     assert (alice_write[2], alice_write[3]) == ("alice", "alice")
@@ -1072,7 +1076,7 @@ def test_requester_scope_can_read_a_curated_shared_bucket(
 ) -> None:
     manager = _manager(tmp_path, monkeypatch, memory_scope="requester", shared_peer_id="df-shared-finance")
 
-    manager.get_context("bob", agent_name="research")
+    manager.get_context("bob", agent_name="research", requester_id="bob")
 
     assert manager._retriever.calls[0]["target_uri"] == [
         "viking://~/peers/bob/memories",
@@ -1087,14 +1091,15 @@ def test_requester_scope_fails_closed_without_a_requester(
 ) -> None:
     manager = _manager(tmp_path, monkeypatch, memory_scope="requester")
 
-    assert manager.get_context(None, agent_name="research") == ""
-    assert manager.get_context("default", agent_name="research") == ""
-    assert manager.search("anything", user_id=None, agent_name="research") == []
+    # The requester comes from its own trusted channel; user_id (the storage
+    # owner) must not stand in for it, and "default" is never a requester.
+    assert manager.get_context("alice", agent_name="research") == ""
+    assert manager.get_context("alice", agent_name="research", requester_id="default") == ""
 
     manager.add(
         "thread-1",
         [HumanMessage("private", id="h1")],
-        user_id=None,
+        user_id="alice",
         agent_name="research",
     )
     assert manager._retriever.calls == []

@@ -52,6 +52,7 @@ class OpenVikingMemoryManager(MemoryManager):
     """
 
     supports_search: ClassVar[bool] = True
+    supports_requester_scope: ClassVar[bool] = True
 
     _config: OpenVikingConfig = PrivateAttr()
     _client: Any = PrivateAttr()
@@ -118,6 +119,7 @@ class OpenVikingMemoryManager(MemoryManager):
         *,
         agent_name: str | None = None,
         user_id: str | None = None,
+        requester_id: str | None = None,
         trace_id: str | None = None,
     ) -> None:
         del trace_id
@@ -126,6 +128,7 @@ class OpenVikingMemoryManager(MemoryManager):
             messages,
             agent_name=agent_name,
             user_id=user_id,
+            requester_id=requester_id,
         )
 
     @classmethod
@@ -142,6 +145,7 @@ class OpenVikingMemoryManager(MemoryManager):
         *,
         agent_name: str | None = None,
         user_id: str | None = None,
+        requester_id: str | None = None,
     ) -> None:
         # Preserve DeerFlow's existing pre-compaction behavior. This backend
         # commits every accepted capture, so add_nowait needs no separate mode.
@@ -150,6 +154,7 @@ class OpenVikingMemoryManager(MemoryManager):
             messages,
             agent_name=agent_name,
             user_id=user_id,
+            requester_id=requester_id,
         )
 
     async def aadd(
@@ -159,6 +164,7 @@ class OpenVikingMemoryManager(MemoryManager):
         *,
         agent_name: str | None = None,
         user_id: str | None = None,
+        requester_id: str | None = None,
         trace_id: str | None = None,
     ) -> None:
         await asyncio.to_thread(
@@ -167,6 +173,7 @@ class OpenVikingMemoryManager(MemoryManager):
             messages,
             agent_name=agent_name,
             user_id=user_id,
+            requester_id=requester_id,
             trace_id=trace_id,
         )
 
@@ -177,12 +184,13 @@ class OpenVikingMemoryManager(MemoryManager):
         agent_name: str | None = None,
         thread_id: str | None = None,
         query: str | None = None,
+        requester_id: str | None = None,
     ) -> str:
         if not self._begin_operation():
             return ""
         try:
             try:
-                peer_id = self._resolve_read_scope(user_id, agent_name)
+                peer_id = self._resolve_read_scope(user_id, agent_name, requester_id)
             except RequesterScopeError as exc:
                 if self._config.read_failure_policy == "raise":
                     raise
@@ -225,6 +233,7 @@ class OpenVikingMemoryManager(MemoryManager):
         agent_name: str | None = None,
         thread_id: str | None = None,
         query: str | None = None,
+        requester_id: str | None = None,
     ) -> str:
         return await asyncio.to_thread(
             self.get_context,
@@ -232,6 +241,7 @@ class OpenVikingMemoryManager(MemoryManager):
             agent_name=agent_name,
             thread_id=thread_id,
             query=query,
+            requester_id=requester_id,
         )
 
     def search(
@@ -355,6 +365,7 @@ class OpenVikingMemoryManager(MemoryManager):
         *,
         agent_name: str | None,
         user_id: str | None,
+        requester_id: str | None = None,
     ) -> None:
         if not self._begin_operation():
             logger.warning("OpenViking write ignored after backend shutdown")
@@ -363,7 +374,7 @@ class OpenVikingMemoryManager(MemoryManager):
             if not thread_id:
                 raise ValueError("OpenViking memory write requires thread_id")
             try:
-                peer_id = self._resolve_scope(user_id, agent_name)
+                peer_id = self._resolve_scope(user_id, agent_name, requester_id)
             except RequesterScopeError as exc:
                 if self._config.write_failure_policy == "raise":
                     raise
@@ -494,14 +505,16 @@ class OpenVikingMemoryManager(MemoryManager):
         self,
         user_id: str | None,
         agent_name: str | None,
+        requester_id: str | None = None,
     ) -> str:
         if self._config.memory_scope == "requester":
-            # Requester-scoped memory: the requesting user owns the peer
+            # Requester-scoped memory: the *trusted requester* owns the peer
             # namespace inside the credential-bound employee, so several
-            # humans on one instance never share one memory space. An
-            # unresolved requester fails closed instead of falling back to a
-            # shared bucket.
-            requester = str(user_id or "").strip()
+            # humans on one instance never share one memory space. The
+            # requester is published by governance (never taken from user_id,
+            # which stays the storage owner). An unresolved requester fails
+            # closed instead of falling back to a shared bucket.
+            requester = str(requester_id or "").strip()
             if not requester or requester == "default":
                 raise RequesterScopeError("OpenViking requester-scoped memory requires an authenticated requester; refusing to fall back to a shared memory space.")
             return _requester_peer_id(requester)
@@ -527,9 +540,10 @@ class OpenVikingMemoryManager(MemoryManager):
         self,
         user_id: str | None,
         agent_name: str | None,
+        requester_id: str | None = None,
     ) -> str:
         try:
-            return self._resolve_scope(user_id, agent_name)
+            return self._resolve_scope(user_id, agent_name, requester_id)
         except MemoryManagerError as exc:
             if self._config.read_failure_policy == "raise":
                 raise MemoryReadError(str(exc)) from exc
