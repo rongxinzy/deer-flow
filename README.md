@@ -856,6 +856,7 @@ DINGTALK_CLIENT_SECRET=your_client_secret
 3. Under **Events**, subscribe to `im.message.receive_v1` and select **Long Connection** mode.
 4. Copy the App ID and App Secret. Set `FEISHU_APP_ID` and `FEISHU_APP_SECRET` in `.env` and enable the channel in `config.yaml`.
 5. The bot supports inbound text, image, and file messages. Inbound attachment downloads are limited to 20 MB per attachment.
+6. Group messages require a bot mention by default; unmentioned follow-ups are accepted in topics already mapped to a DeerFlow conversation or as the same user's answer to a fresh pending clarification. Replies in unrelated topics and mentions of colleagues are ignored. Direct messages remain ungated. The channel resolves its bot `open_id` at startup; set `channels.feishu.bot_open_id` to override it, or `bot_name` as an explicit display-name fallback if discovery is unavailable. With no known identity, new group messages stay ignored. Set `group_trigger.mention_only: false` to respond to all group messages, including bare commands and connect codes.
 
 **WeChat Setup**
 

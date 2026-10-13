@@ -2903,6 +2903,13 @@ run_ownership:
 #     app_secret: $FEISHU_APP_SECRET
 #     # domain: https://open.feishu.cn       # China (default)
 #     # domain: https://open.larksuite.com   # International
+#     # Stable bot identity is discovered at startup. Override it if needed:
+#     # bot_open_id: "ou_your_bot"
+#     # Explicit display-name fallback when identity discovery is unavailable.
+#     # Unknown identity never treats an arbitrary colleague mention as the bot.
+#     # bot_name: "数字员工"
+#     # group_trigger:
+#     #   mention_only: true   # default: @ the bot, continue a mapped topic, or answer its clarification
 #
 #   slack:
 #     enabled: false
