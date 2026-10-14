@@ -659,6 +659,32 @@ def test_configure_provider_runtime_credentials_enables_connect_without_file_edi
     anyio.run(repo.close)
 
 
+def test_configure_provider_does_not_persist_declared_keys(tmp_path):
+    import anyio
+
+    repo = anyio.run(_make_repo, tmp_path)
+    config = _enabled_connections_config()
+    # config.yaml owns bot_name (the operator renders it); saving credentials
+    # must not copy the effective value into the runtime store, where it would
+    # shadow a later declarative change.
+    app = _make_app(config, repo, {"feishu": {"enabled": True, "bot_name": "New Bot"}})
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/channels/feishu/runtime-config",
+            json={"values": {"app_id": "cli-x", "app_secret": "secret"}},
+        )
+
+    assert response.status_code == 200
+    persisted = app.state.channel_runtime_config_store.load_all()["feishu"]
+    assert persisted["app_id"] == "cli-x"
+    assert persisted["app_secret"] == "secret"
+    assert "bot_name" not in persisted, "the declared key must stay owned by config.yaml"
+    assert "group_trigger" not in persisted
+
+    anyio.run(repo.close)
+
+
 def test_runtime_config_endpoints_require_admin(tmp_path):
     import anyio
 
