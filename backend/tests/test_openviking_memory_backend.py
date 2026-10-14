@@ -21,6 +21,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from deerflow.agents.memory.backends.openviking.config import OpenVikingConfig
 from deerflow.agents.memory.backends.openviking.openviking_manager import (
     OpenVikingMemoryManager,
+    RequesterScopeError,
     _canonical_peer_id,
     _session_id,
 )
@@ -1187,9 +1188,15 @@ def test_governance_preserves_actor_scope(tmp_path, monkeypatch, official_integr
         return original(client, method, **kwargs)
 
     manager._call_openviking = record
+    # user_id is the storage owner. Requester scope must not treat it as the
+    # trusted requester, and must not keep an ambient actor peer either.
+    requester_id = "alice" if scope == "requester" else None
     with _use_actor_peer("unrelated"):
-        manager.get_memory(user_id="alice")
-        manager.clear_memory(user_id="alice")
+        if scope == "requester":
+            with pytest.raises(RequesterScopeError):
+                manager.get_memory(user_id="alice")
+        manager.get_memory(user_id="alice", requester_id=requester_id)
+        manager.clear_memory(user_id="alice", requester_id=requester_id)
     assert calls and all(peer == expected_peer for _, peer in calls)
 
 
