@@ -13,6 +13,7 @@ import weakref
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Any, ClassVar, Literal
+from urllib.parse import unquote
 
 from pydantic import PrivateAttr
 
@@ -59,6 +60,7 @@ class OpenVikingMemoryManager(MemoryManager):
     _recorder: Any = PrivateAttr()
     _retriever: Any = PrivateAttr()
     _use_actor_peer: Any = PrivateAttr()
+    _call_openviking: Any = PrivateAttr()
     _partial_write_error: type[Exception] = PrivateAttr()
     _should_keep_hidden_message: Any = PrivateAttr(default=None)
     _session_locks: weakref.WeakValueDictionary[str, threading.RLock] = PrivateAttr(default_factory=weakref.WeakValueDictionary)
@@ -95,6 +97,7 @@ class OpenVikingMemoryManager(MemoryManager):
             max_content_chars=self._config.max_injection_chars,
         )
         self._use_actor_peer = integration["use_actor_peer"]
+        self._call_openviking = integration["call_openviking"]
         self._partial_write_error = integration["OpenVikingPartialWriteError"]
 
     @classmethod
@@ -312,6 +315,181 @@ class OpenVikingMemoryManager(MemoryManager):
             category=category,
             requester_id=requester_id,
         )
+
+    # ------------------------------------------------------------ governance
+    def get_memory(
+        self,
+        *,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        """List and read the actor's own memory entries.
+
+        An explicit ``agent_name`` scopes to that agent's bucket. Without one —
+        which is how the gateway's management endpoints call in — it covers the
+        actor's whole memory: the user-level root plus every peer bucket under
+        the credential-bound user. Other employees are separate credentials and
+        are never included.
+        """
+
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            facts: list[dict[str, Any]] = []
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                for uri in self._scope_uris(user_id, agent_name):
+                    content = self._call_openviking(self._client, "read", uri=uri)
+                    if isinstance(content, bytes | bytearray):
+                        content = content.decode("utf-8", errors="replace")
+                    facts.append({"id": uri, "content": str(content), "source": uri})
+            return {"facts": facts}
+        finally:
+            self._end_operation()
+
+    def delete_fact(
+        self,
+        fact_id: str,
+        *,
+        agent_name: str | None = None,
+        user_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Remove one memory entry by the OpenViking URI ``search`` returned.
+
+        Returns the remaining memory document, so a caller that adopts the
+        response body does not mistake a successful delete for an empty store.
+        """
+
+        if not fact_id:
+            raise ValueError("OpenViking delete_fact requires a fact id (its OpenViking URI)")
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                self._remove_uri(
+                    self._assert_own_uri(fact_id, user_id, agent_name),
+                    user_id=user_id,
+                    agent_name=agent_name,
+                )
+            return self.get_memory(user_id=user_id, agent_name=agent_name)
+        finally:
+            self._end_operation()
+
+    def clear_memory(
+        self,
+        *,
+        user_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Remove the actor's own memory under every scope root it may read.
+
+        An explicit ``agent_name`` clears only that agent's bucket. Without one
+        it clears the user-level root and every peer bucket of the
+        credential-bound user, which is what recall reads by default. Other
+        employees are separate credentials and are never touched.
+        """
+
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name)):
+                for root in self._scope_roots(user_id, agent_name):
+                    self._remove_uri(root, user_id=user_id, agent_name=agent_name, recursive=True)
+            return {"facts": []}
+        finally:
+            self._end_operation()
+
+    def _scope_roots(self, user_id: str | None, agent_name: str | None) -> list[str]:
+        """Memory roots this call may read or clear.
+
+        The wide instance listing still runs the owner check. Omitting
+        ``agent_name`` must not let another DeerFlow user read the credential
+        owner's directory; ``single_tenant_instance`` keeps its existing
+        mapping inside ``_resolve_scope``.
+        """
+
+        peer_id = self._resolve_scope(user_id, agent_name)
+        if agent_name is not None or self._config.memory_scope == "requester":
+            return [f"viking://~/peers/{peer_id}/memories"]
+        # Enumerate peer directories, but never treat the peers container as a
+        # memory root: it can also hold resources and curated shared memory.
+        roots = ["viking://~/memories"]
+        peers = self._call_openviking(self._client, "ls", uri="viking://~/peers", simple=True)
+        for uri in _extract_uris(peers):
+            prefix = "viking://~/peers/"
+            alias = self._credential_alias(uri)
+            peer = alias.removeprefix(prefix).rstrip("/")
+            if not alias.startswith(prefix) or not peer or "/" in peer or "\\" in peer or peer in {".", ".."} or unquote(peer) != peer:
+                raise MemoryManagerError("OpenViking returned an invalid peer directory")
+            if peer.startswith("df-shared-"):
+                continue
+            root = f"{prefix}{peer}/memories"
+            if root not in roots:
+                roots.append(root)
+        return roots
+
+    def _scope_uris(self, user_id: str | None, agent_name: str | None) -> list[str]:
+        """Every memory file URI under the actor's scope roots.
+
+        Enumeration failures propagate: an unreachable OpenViking must surface
+        as an error, not as an empty memory.
+        """
+
+        uris: list[str] = []
+        seen: set[str] = set()
+        roots = self._scope_roots(user_id, agent_name)
+        for root in roots:
+            for pattern in ("*", "**/*"):
+                result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
+                for uri in _extract_uris(result):
+                    self._validate_memory_uri(self._credential_alias(uri), [root])
+                    if uri not in seen:
+                        seen.add(uri)
+                        uris.append(uri)
+        return uris
+
+    def _assert_own_uri(self, uri: str, user_id: str | None, agent_name: str | None) -> str:
+        roots = self._scope_roots(user_id, agent_name)
+        self._validate_memory_uri(self._credential_alias(uri), roots)
+        # OpenViking listings/search return concrete user URIs. Only accept a
+        # concrete id that this credential actually enumerated in this scope;
+        # otherwise a foreign user's identically named fact could alias ours.
+        if uri.startswith("viking://user/") and uri not in self._scope_uris(user_id, agent_name):
+            raise MemoryManagerError("refusing to modify a memory URI outside this actor's scope")
+        return uri
+
+    @staticmethod
+    def _credential_alias(uri: str) -> str:
+        if uri.startswith("viking://user/"):
+            user_and_path = uri[len("viking://user/") :].split("/", 1)
+            if len(user_and_path) == 2 and user_and_path[0]:
+                return "viking://~/" + user_and_path[1]
+        return uri
+
+    def _governance_peer(self, user_id: str | None, agent_name: str | None) -> str | None:
+        peer = self._resolve_scope(user_id, agent_name)
+        return peer if agent_name is not None or self._config.memory_scope == "requester" else None
+
+    @staticmethod
+    def _validate_memory_uri(uri: str, roots: list[str]) -> str:
+        if "\\" in uri or ".." in uri.split("/") or "." in uri.split("/") or unquote(uri) != uri or "?" in uri or "#" in uri:
+            raise MemoryManagerError(f"refusing to modify a suspicious memory URI: {uri}")
+        if not any(uri == root or uri.startswith(root + "/") for root in roots):
+            raise MemoryManagerError(f"refusing to modify a memory URI outside this actor's scope: {uri}")
+        return uri
+
+    def _remove_uri(
+        self,
+        uri: str,
+        *,
+        user_id: str | None,
+        agent_name: str | None,
+        recursive: bool = False,
+    ) -> None:
+        # Governance actions are explicit calls: unlike passive capture, a
+        # failure surfaces instead of being dropped by the write policy.
+        peer_id = self._governance_peer(user_id, agent_name)
+        with self._actor_peer_scope(peer_id):
+            self._call_openviking(self._client, "rm", uri=uri, recursive=recursive)
 
     def warm(self) -> bool | None:
         if not self._begin_operation():
@@ -563,7 +741,7 @@ class OpenVikingMemoryManager(MemoryManager):
 
     def _actor_peer_scope(
         self,
-        peer_id: str,
+        peer_id: str | None,
     ) -> AbstractContextManager[None]:
         return self._use_actor_peer(peer_id)
 
@@ -659,6 +837,7 @@ def _load_official_integration() -> dict[str, Any]:
             has_request_actor_peer_support,
         )
         from langchain_openviking.actor_peer import use_actor_peer
+        from langchain_openviking.client import call_openviking
     except ImportError as exc:
         raise ImportError("The OpenViking memory backend requires langchain-openviking==0.1.0. Install DeerFlow backend dependencies and retry.") from exc
     if not has_request_actor_peer_support():
@@ -669,6 +848,7 @@ def _load_official_integration() -> dict[str, Any]:
         "OpenVikingRetriever": OpenVikingRetriever,
         "OpenVikingSessionRecorder": OpenVikingSessionRecorder,
         "use_actor_peer": use_actor_peer,
+        "call_openviking": call_openviking,
     }
 
 
@@ -706,6 +886,28 @@ def _document_to_fact(document: Any) -> dict[str, Any]:
         "source": uri,
         "score": score,
     }
+
+
+def _extract_uris(value: Any) -> list[str]:
+    """Collect ``viking://`` URIs from a glob/ls result of any nesting."""
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.startswith("viking://") else []
+    if isinstance(value, dict):
+        if isinstance(value.get("uri"), str):
+            return [value["uri"]]
+        uris: list[str] = []
+        for key in ("matches", "result", "files", "items"):
+            uris.extend(_extract_uris(value.get(key)))
+        return uris
+    if isinstance(value, list):
+        nested: list[str] = []
+        for item in value:
+            nested.extend(_extract_uris(item))
+        return nested
+    return []
 
 
 __all__ = [

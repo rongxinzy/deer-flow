@@ -8,7 +8,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.gateway.authz import require_permission
 from app.gateway.internal_auth import get_trusted_internal_owner_user_id
-from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManager, get_memory_manager
+from deerflow.agents.memory import (
+    MemoryConflictError,
+    MemoryCorruptionError,
+    MemoryManager,
+    MemoryManagerError,
+    get_memory_manager,
+)
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.paths import make_safe_user_id
 from deerflow.runtime.user_context import get_effective_user_id
@@ -304,6 +310,8 @@ async def clear_memory(request: Request) -> MemoryResponse:
         raise _unsupported_501(manager, "clear memory") from None
     except (MemoryConflictError, MemoryCorruptionError) as exc:
         raise _map_memory_manager_error(exc) from exc
+    except MemoryManagerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
 
@@ -345,7 +353,7 @@ async def create_memory_fact_endpoint(body: FactCreateRequest, request: Request)
 
 
 @router.delete(
-    "/memory/facts/{fact_id}",
+    "/memory/facts/{fact_id:path}",
     response_model=MemoryResponse,
     response_model_exclude_none=True,
     summary="Delete Memory Fact",
@@ -353,7 +361,11 @@ async def create_memory_fact_endpoint(body: FactCreateRequest, request: Request)
 )
 @require_permission("memory", "write")
 async def delete_memory_fact_endpoint(fact_id: str, request: Request) -> MemoryResponse:
-    """Delete a single fact from memory by fact id."""
+    """Delete a single fact from memory by fact id.
+
+    ``fact_id`` is a path parameter: OpenViking fact ids are ``viking://`` URIs
+    that contain slashes, which the default path converter would not match.
+    """
     manager = await asyncio.to_thread(get_memory_manager)
     try:
         memory_data = await asyncio.to_thread(manager.delete_fact, fact_id, user_id=_resolve_memory_user_id(request))
@@ -363,6 +375,8 @@ async def delete_memory_fact_endpoint(fact_id: str, request: Request) -> MemoryR
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
     except (MemoryConflictError, MemoryCorruptionError) as exc:
         raise _map_memory_manager_error(exc) from exc
+    except MemoryManagerError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to delete memory fact.") from exc
 
