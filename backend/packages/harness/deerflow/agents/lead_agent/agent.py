@@ -496,11 +496,7 @@ def _attach_configured_middlewares(
     ``DynamicContextMiddleware.before_agent`` performs the first memory recall.
     Unanchored extensions keep the tail placement they have always had.
     """
-    anchored = [
-        mw
-        for mw in configured
-        if getattr(type(mw), "_next_anchor", None) or getattr(type(mw), "_prev_anchor", None)
-    ]
+    anchored = [mw for mw in configured if getattr(type(mw), "_next_anchor", None) or getattr(type(mw), "_prev_anchor", None)]
     if anchored:
         _insert_extra(chain, anchored)
     chain.extend([mw for mw in configured if mw not in anchored])

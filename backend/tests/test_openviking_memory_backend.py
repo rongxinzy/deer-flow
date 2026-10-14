@@ -1056,12 +1056,8 @@ def test_requester_scope_partitions_memory_per_user(
 
     # The write side must partition too: the recorder is handed the requester
     # as both peer and actor, under a per-requester session id.
-    manager.add(
-        "thread-1", [HumanMessage("alice fact", id="h1")], user_id="alice", agent_name="research", requester_id="alice"
-    )
-    manager.add(
-        "thread-2", [HumanMessage("bob fact", id="h2")], user_id="bob", agent_name="research", requester_id="bob"
-    )
+    manager.add("thread-1", [HumanMessage("alice fact", id="h1")], user_id="alice", agent_name="research", requester_id="alice")
+    manager.add("thread-2", [HumanMessage("bob fact", id="h2")], user_id="bob", agent_name="research", requester_id="bob")
 
     alice_write, bob_write = manager._recorder.calls[0], manager._recorder.calls[1]
     assert (alice_write[2], alice_write[3]) == ("alice", "alice")
