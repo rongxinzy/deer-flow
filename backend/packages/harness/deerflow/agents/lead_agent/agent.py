@@ -34,6 +34,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.runnables import RunnableConfig
 
+from deerflow.agents.factory import _insert_extra
 from deerflow.agents.interaction_policy import resolve_run_interaction_policy
 from deerflow.agents.lead_agent.prompt import apply_prompt_template
 from deerflow.agents.middlewares.clarification_middleware import ClarificationMiddleware
@@ -483,6 +484,24 @@ Being proactive with task management demonstrates thoroughness and ensures all r
 # ViewImageMiddleware should be before ClarificationMiddleware to inject image details before LLM
 # ToolErrorHandlingMiddleware should be before ClarificationMiddleware to convert tool exceptions to ToolMessages
 # ClarificationMiddleware should be last to intercept clarification requests after model calls
+def _attach_configured_middlewares(
+    chain: list[AgentMiddleware],
+    configured: list[AgentMiddleware],
+) -> None:
+    """Attach configured extension middlewares, honoring an ordering anchor.
+
+    Configured extensions (``extensions.middlewares``) are appended to the tail
+    by default. One may declare ``@Next``/``@Prev`` when its ordering matters —
+    the governance middleware must publish the trusted requester *before*
+    ``DynamicContextMiddleware.before_agent`` performs the first memory recall.
+    Unanchored extensions keep the tail placement they have always had.
+    """
+    anchored = [mw for mw in configured if getattr(type(mw), "_next_anchor", None) or getattr(type(mw), "_prev_anchor", None)]
+    if anchored:
+        _insert_extra(chain, anchored)
+    chain.extend([mw for mw in configured if mw not in anchored])
+
+
 def build_middlewares(
     config: RunnableConfig,
     model_name: str | None,
@@ -730,7 +749,7 @@ def build_middlewares(
 
     configured_middlewares = load_configured_extension_middlewares(resolved_app_config)
     if configured_middlewares:
-        middlewares.extend(configured_middlewares)
+        _attach_configured_middlewares(middlewares, configured_middlewares)
 
     # LLMErrorHandlingMiddleware gives a run one model-boundary retry for a true
     # empty stop. Keep a terminal fallback for post-tool responses that still have

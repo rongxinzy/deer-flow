@@ -274,6 +274,7 @@ def test_memory_lookup_uses_runtime_user_id():
         app_config=None,
         user_id="runtime-user",
         query="Hi",
+        requester_id=None,
     )
 
 

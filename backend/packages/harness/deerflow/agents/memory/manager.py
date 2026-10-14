@@ -53,6 +53,17 @@ _manager_lock = threading.Lock()
 _memory_judge_signature: str | None = None
 
 
+def requester_kwargs(manager: MemoryManager, requester_id: str | None) -> dict[str, str | None]:
+    """Pass the trusted requester only to backends that partition by requester.
+
+    Backends without ``supports_requester_scope`` never receive the keyword, so
+    their signatures stay unchanged (and their single user scope is unaffected).
+    """
+    if getattr(type(manager), "supports_requester_scope", False):
+        return {"requester_id": requester_id}
+    return {}
+
+
 def context_query_kwargs(get_context: Callable[..., str], query: str | None) -> dict[str, str | None]:
     """Pass the optional hint only when a backend accepts that keyword.
 
@@ -192,6 +203,12 @@ class MemoryManager(BaseModel):
     # that fails fast at instantiation rather than silently returning empty
     # results). Default False: a new backend must explicitly opt in to tool mode.
     supports_search: ClassVar[bool] = False
+    # Backends that partition memory per requesting user (not just per storage
+    # owner) declare this and accept the optional ``requester_id`` argument on
+    # their identity-carrying methods (``add`` / ``get_context`` and their
+    # async/nowait variants). Callers pass the trusted requester only when this
+    # flag is set, so backends that keep a single user scope are unaffected.
+    supports_requester_scope: ClassVar[bool] = False
     # Backends that rely on conversation-level extraction instead of fact CRUD
     # can retain MemoryMiddleware writes while tool mode supplies query-aware
     # search. Most backends keep tool mode fully model-directed.
