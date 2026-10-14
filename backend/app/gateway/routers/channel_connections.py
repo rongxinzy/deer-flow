@@ -711,22 +711,43 @@ async def _configure_channel_provider_runtime(provider: str, body: ChannelRuntim
         runtime_config["bot_username"] = values["bot_username"]
 
     # runtime_config started as a copy of the provider's *effective* config, so
-    # it also carries the keys config.yaml owns. Persisting them would let an
-    # old copy shadow a later declarative change (for example a new bot_name).
+    # it also carries the keys config.yaml owns. Persist a copy WITHOUT them, so
+    # an old copy cannot shadow a later declarative change (for example a new
+    # bot_name). The restart and the in-process cache keep the declared values:
+    # the cached config short-circuits the merge, so dropping them here would
+    # make them disappear until the process reloads config.yaml.
+    persist_config = dict(runtime_config)
     for key in DECLARED_CHANNEL_KEYS:
-        runtime_config.pop(key, None)
+        persist_config.pop(key, None)
 
-    return await _apply_runtime_channel_config(request, config, provider, runtime_config)
+    return await _apply_runtime_channel_config(
+        request,
+        config,
+        provider,
+        runtime_config,
+        persist_config=persist_config,
+    )
 
 
-async def _apply_runtime_channel_config(request: Request, config: ChannelConnectionsConfig, provider: str, runtime_config: dict[str, Any]) -> ChannelProviderResponse:
+async def _apply_runtime_channel_config(
+    request: Request,
+    config: ChannelConnectionsConfig,
+    provider: str,
+    runtime_config: dict[str, Any],
+    *,
+    persist_config: dict[str, Any] | None = None,
+) -> ChannelProviderResponse:
+    # ``runtime_config`` is the effective config (declared + runtime) used to
+    # restart the channel and to update the live cache. ``persist_config`` is
+    # the store copy, which must not carry the keys config.yaml owns.
+    store_config = runtime_config if persist_config is None else persist_config
     started = await _restart_runtime_channel_if_available(provider, runtime_config)
     if started is False:
         display_name = _PROVIDER_META[provider]["display_name"]
         raise HTTPException(status_code=400, detail=f"Failed to start {display_name} channel. Check the values and try again.")
 
     store = await _get_runtime_config_store(request)
-    await asyncio.to_thread(store.set_provider_config, provider, runtime_config)
+    await asyncio.to_thread(store.set_provider_config, provider, store_config)
 
     # Re-read the live cached config and apply only this provider's change so a
     # concurrent mutation for a different provider is not clobbered. No await
