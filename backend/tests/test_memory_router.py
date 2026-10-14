@@ -3,13 +3,40 @@ import json
 import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from urllib.parse import quote
 
+import pytest
 from _router_auth_helpers import call_unwrapped, make_authed_test_app
 from fastapi.testclient import TestClient
 
 from app.gateway.routers import memory
 from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError
 from deerflow.agents.memory.backends.deermem.deer_mem import DeerMem
+
+
+@pytest.mark.parametrize("method,path", [("delete", "/api/memory"), ("delete", "/api/memory/facts/fact")])
+@pytest.mark.parametrize("error,status", [(MemoryConflictError("conflict"), 409), (MemoryCorruptionError("corrupt"), 500)])
+def test_memory_delete_preserves_specialized_errors(method, path, error, status):
+    app = make_authed_test_app()
+    app.include_router(memory.router)
+    manager = MagicMock()
+    manager.clear_memory.side_effect = error
+    manager.delete_fact.side_effect = error
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=manager), TestClient(app) as client:
+        response = client.request(method, path)
+    assert response.status_code == status
+
+
+def test_memory_delete_accepts_openviking_uri_fact_ids():
+    app = make_authed_test_app()
+    app.include_router(memory.router)
+    manager = MagicMock()
+    manager.delete_fact.return_value = {"facts": []}
+    uri = "viking://~/peers/research/memories/fact.md"
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=manager), TestClient(app) as client:
+        response = client.delete("/api/memory/facts/" + quote(uri, safe=""))
+    assert response.status_code == 200
+    assert manager.delete_fact.call_args.args == (uri,)
 
 
 def _sample_memory(facts: list[dict] | None = None) -> dict:

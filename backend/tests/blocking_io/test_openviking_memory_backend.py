@@ -100,6 +100,7 @@ def _manager(
             "OpenVikingRetriever": _BlockingRetriever,
             "OpenVikingSessionRecorder": _BlockingRecorder,
             "use_actor_peer": lambda peer_id: nullcontext(),
+            "call_openviking": lambda client, method, /, **kwargs: getattr(client, method)(**kwargs),
         },
     )
     manager = OpenVikingMemoryManager.from_config(
