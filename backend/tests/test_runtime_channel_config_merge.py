@@ -41,3 +41,32 @@ def test_runtime_only_provider_is_added():
     merge_runtime_channel_configs(channels_config, connections, store=store)
 
     assert channels_config["telegram"] == {"bot_token": "user_token"}
+
+
+def test_declared_keys_stay_owned_by_yaml():
+    # config.yaml owns bot_name/group_trigger. The runtime config API persists a
+    # provider's effective config, so an older copy of the name used to shadow a
+    # later declarative change; the stored value must be ignored now.
+    channels_config = {
+        "feishu": {"enabled": True, "bot_name": "New Bot", "group_trigger": {"mention_only": True}},
+    }
+    connections = SimpleNamespace(enabled=True, feishu=SimpleNamespace(enabled=True))
+    store = _store({"feishu": {"app_id": "cli_x", "app_secret": "s", "enabled": True, "bot_name": "Old Bot"}})
+
+    merge_runtime_channel_configs(channels_config, connections, store=store)
+
+    merged = channels_config["feishu"]
+    assert merged["bot_name"] == "New Bot", "a stale stored name must not win"
+    assert merged["group_trigger"] == {"mention_only": True}
+    # Credentials still come from the store.
+    assert merged["app_id"] == "cli_x"
+
+
+def test_declared_key_removed_from_yaml_stays_removed():
+    channels_config = {"feishu": {"enabled": True}}
+    connections = SimpleNamespace(enabled=True, feishu=SimpleNamespace(enabled=True))
+    store = _store({"feishu": {"app_id": "cli_x", "enabled": True, "bot_name": "Old Bot"}})
+
+    merge_runtime_channel_configs(channels_config, connections, store=store)
+
+    assert "bot_name" not in channels_config["feishu"], "a stored name must not revive after the CR clears it"

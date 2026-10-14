@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app.channels.runtime_config_store import (
+    DECLARED_CHANNEL_KEYS,
     ChannelRuntimeConfigStore,
     apply_runtime_connection_config,
     merge_runtime_channel_configs,
@@ -708,6 +709,12 @@ async def _configure_channel_provider_runtime(provider: str, body: ChannelRuntim
         # apply_runtime_connection_config; never mutate the config instance
         # cached by get_app_config().
         runtime_config["bot_username"] = values["bot_username"]
+
+    # runtime_config started as a copy of the provider's *effective* config, so
+    # it also carries the keys config.yaml owns. Persisting them would let an
+    # old copy shadow a later declarative change (for example a new bot_name).
+    for key in DECLARED_CHANNEL_KEYS:
+        runtime_config.pop(key, None)
 
     return await _apply_runtime_channel_config(request, config, provider, runtime_config)
 
