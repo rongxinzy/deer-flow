@@ -55,9 +55,15 @@ _CHANNELS_GATEWAY_URL_ENV = "DEER_FLOW_CHANNELS_GATEWAY_URL"
 # Channel watchdog: recover a transport that has silently died. A provider SDK
 # can keep its worker thread alive with a dead socket (feishu's lark client
 # wedges after a platform-side restart), so `is_running` stays True and nothing
-# recovers until the channel is restarted. The watchdog only acts on channels
-# that DID connect at least once — a platform that was never reachable is left
-# to the SDK's own retry loop, so an outage does not trigger restart churn.
+# recovers until the channel is restarted.
+#
+# The watchdog restarts after `threshold` consecutive disconnected checks, then
+# waits `threshold` more checks before it may restart that channel again. An
+# earlier version only acted on channels it had personally observed as
+# connected, which silently skipped exactly the case worth fixing: a connection
+# that died between two samples (verified live — a 44s connection left the
+# channel dead for good). The cooldown keeps a platform outage from turning
+# into a restart storm.
 DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS = 60.0
 DEFAULT_CHANNEL_WATCHDOG_FAILURE_THRESHOLD = 3
 
@@ -170,7 +176,7 @@ class ChannelService:
         self._readiness_locks: dict[str, asyncio.Lock] = {}
         self._watchdog_task: asyncio.Task[None] | None = None
         self._watchdog_failures: dict[str, int] = {}
-        self._watchdog_ever_connected: dict[str, bool] = {}
+        self._watchdog_cooldown: dict[str, int] = {}
         self._watchdog_interval_seconds = _resolve_non_negative_float(config, "watchdog_interval_seconds", DEFAULT_CHANNEL_WATCHDOG_INTERVAL_SECONDS)
         self._watchdog_failure_threshold = _resolve_positive_int(config, "watchdog_failure_threshold", DEFAULT_CHANNEL_WATCHDOG_FAILURE_THRESHOLD)
 
@@ -363,7 +369,16 @@ class ChannelService:
                 logger.exception("Channel watchdog iteration failed")
 
     async def _watchdog_round(self) -> None:
-        """Restart any channel that dropped after connecting and never came back."""
+        """Restart a channel that can no longer reach its platform."""
+        # Drop bookkeeping for channels the service no longer tracks, so a
+        # channel re-registered under the same name never inherits a stale
+        # cooldown or failure count.
+        live = set(self._channels)
+        for name in [name for name in self._watchdog_failures if name not in live]:
+            self._watchdog_failures.pop(name, None)
+        for name in [name for name in self._watchdog_cooldown if name not in live]:
+            self._watchdog_cooldown.pop(name, None)
+
         for name, channel in list(self._channels.items()):
             channel_config = self._config.get(name)
             if not isinstance(channel_config, dict) or not channel_config.get("enabled", False):
@@ -373,20 +388,25 @@ class ChannelService:
                 # This channel cannot tell "connected" from "process alive", so
                 # restarting on is_connected would just fight the SDK's retry.
                 continue
-            if channel.is_connected:
-                self._watchdog_ever_connected[name] = True
-                self._watchdog_failures.pop(name, None)
+            cooldown = self._watchdog_cooldown.get(name, 0)
+            if cooldown > 0:
+                if channel.is_connected:
+                    # It came back on its own during the cooldown; forget the
+                    # pending restart so the next drop starts from a clean count.
+                    self._watchdog_cooldown.pop(name, None)
+                    self._watchdog_failures.pop(name, None)
+                else:
+                    self._watchdog_cooldown[name] = cooldown - 1
                 continue
-            if not self._watchdog_ever_connected.get(name):
-                # Never connected: the provider SDK's own retry loop owns this,
-                # so a platform outage does not cause restart churn.
+            if channel.is_connected:
+                self._watchdog_failures.pop(name, None)
                 continue
             failures = self._watchdog_failures.get(name, 0) + 1
             if failures < self._watchdog_failure_threshold:
                 self._watchdog_failures[name] = failures
                 continue
             self._watchdog_failures.pop(name, None)
-            logger.warning("Channel %s lost its connection and did not recover; restarting", name)
+            logger.warning("Channel %s has been disconnected for %d checks; restarting", name, failures)
             # Serialize with ensure_channel_ready: both stop and start channels,
             # so sharing the per-channel lock keeps them from racing.
             lock = self._readiness_locks.setdefault(name, asyncio.Lock())
@@ -397,9 +417,10 @@ class ChannelService:
                 except Exception:
                     logger.exception("Channel watchdog failed to restart %s", name)
             if restarted:
-                # Only forget the "has connected" flag once the restart landed: a
-                # deferred or failed restart keeps the channel eligible next round.
-                self._watchdog_ever_connected[name] = False
+                # Bound the churn: while the platform is unreachable the fresh
+                # channel cannot connect either, so let it retry before the next
+                # restart instead of tearing it down every round.
+                self._watchdog_cooldown[name] = self._watchdog_failure_threshold
             else:
                 logger.warning("Channel watchdog could not restart %s yet; will retry", name)
 

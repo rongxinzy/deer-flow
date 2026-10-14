@@ -11809,14 +11809,19 @@ def test_feishu_is_connected_tracks_the_lark_socket():
     _run(go())
 
 
-def test_channel_watchdog_restarts_a_channel_that_dropped():
+def test_channel_watchdog_restarts_a_channel_that_never_connected():
+    """Regression: a connection that dies between two samples must still recover.
+
+    The watchdog used to only act on channels it had personally observed as
+    connected, so a connection shorter than one sampling interval left the
+    channel dead for good (verified live: a 44s connection).
+    """
     from app.channels.service import ChannelService
 
     async def go():
         service = ChannelService(channels_config={})
         service._config = {"feishu": {"enabled": True}}
         service._channels = {"feishu": _WatchdogChannel(connected=False)}
-        service._watchdog_ever_connected = {"feishu": True}
         service._watchdog_failure_threshold = 2
 
         restarted: list[str] = []
@@ -11831,7 +11836,92 @@ def test_channel_watchdog_restarts_a_channel_that_dropped():
         assert restarted == [], "a single missed round must not restart the channel"
         await service._watchdog_round()
         assert restarted == ["feishu"]
-        assert service._watchdog_ever_connected["feishu"] is False
+        assert service._watchdog_cooldown["feishu"] == 2, "a landed restart arms the cooldown"
+
+    _run(go())
+
+
+def test_channel_watchdog_cools_down_after_a_restart():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {"feishu": _WatchdogChannel(connected=False)}
+        service._watchdog_failure_threshold = 2
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        for _ in range(2):  # reach the threshold and restart once
+            await service._watchdog_round()
+        assert restarted == ["feishu"]
+
+        await service._watchdog_round()
+        await service._watchdog_round()
+        assert restarted == ["feishu"], "the cooldown must hold off the next restart"
+        await service._watchdog_round()  # cooldown exhausted
+        await service._watchdog_round()  # threshold reached again
+        assert restarted == ["feishu", "feishu"]
+
+    _run(go())
+
+
+def test_channel_watchdog_clears_state_when_the_channel_recovers_during_cooldown():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        channel = _WatchdogChannel(connected=False)
+        service._channels = {"feishu": channel}
+        service._watchdog_failure_threshold = 2
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        await service._watchdog_round()
+        assert restarted == ["feishu"], "threshold reached -> one restart"
+
+        channel.connected = True
+        await service._watchdog_round()
+        assert service._watchdog_cooldown.get("feishu", 0) == 0, "a live channel ends the cooldown"
+
+        # The next drop starts from a clean count, so it needs the full threshold.
+        channel.connected = False
+        await service._watchdog_round()
+        assert restarted == ["feishu"], "one miss is not enough after a recovery"
+        await service._watchdog_round()
+        assert restarted == ["feishu", "feishu"]
+
+    _run(go())
+
+
+def test_channel_watchdog_drops_state_for_removed_channels():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {}  # the channel is gone
+        service._watchdog_failures = {"feishu": 2}
+        service._watchdog_cooldown = {"feishu": 3}
+
+        await service._watchdog_round()
+
+        assert service._watchdog_failures == {}, "a removed channel must not keep a failure count"
+        assert service._watchdog_cooldown == {}, "a removed channel must not keep a cooldown"
 
     _run(go())
 
@@ -11843,7 +11933,6 @@ def test_channel_watchdog_retries_after_a_deferred_restart():
         service = ChannelService(channels_config={})
         service._config = {"feishu": {"enabled": True}}
         service._channels = {"feishu": _WatchdogChannel(connected=False)}
-        service._watchdog_ever_connected = {"feishu": True}
         service._watchdog_failure_threshold = 1
 
         restarted: list[str] = []
@@ -11857,31 +11946,7 @@ def test_channel_watchdog_retries_after_a_deferred_restart():
         await service._watchdog_round()
         await service._watchdog_round()
         assert restarted == ["feishu", "feishu"], "a deferred restart must stay eligible"
-        assert service._watchdog_ever_connected["feishu"] is True
-
-    _run(go())
-
-
-def test_channel_watchdog_leaves_never_connected_channels_alone():
-    from app.channels.service import ChannelService
-
-    async def go():
-        service = ChannelService(channels_config={})
-        service._config = {"feishu": {"enabled": True}}
-        service._channels = {"feishu": _WatchdogChannel(connected=False)}
-        service._watchdog_failure_threshold = 1
-
-        restarted: list[str] = []
-
-        async def fake_restart(name, **kwargs):
-            restarted.append(name)
-            return True
-
-        service.restart_channel = fake_restart
-
-        for _ in range(3):
-            await service._watchdog_round()
-        assert restarted == [], "a platform outage must not trigger restart churn"
+        assert service._watchdog_cooldown.get("feishu", 0) == 0, "no cooldown without a landed restart"
 
     _run(go())
 
@@ -11894,7 +11959,6 @@ def test_channel_watchdog_skips_channels_without_a_connection_signal():
         service._config = {"feishu": {"enabled": True}}
         # A channel whose is_connected is only the base definition: no signal.
         service._channels = {"feishu": SimpleNamespace(is_connected=False)}
-        service._watchdog_ever_connected = {"feishu": True}
         service._watchdog_failure_threshold = 1
 
         restarted: list[str] = []
@@ -11921,7 +11985,6 @@ def test_channel_watchdog_resets_after_a_healthy_round():
         channel = _WatchdogChannel(connected=False)
         service._channels = {"feishu": channel}
         service._watchdog_failure_threshold = 2
-        service._watchdog_ever_connected = {"feishu": True}
 
         restarted: list[str] = []
 
