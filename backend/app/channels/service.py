@@ -370,6 +370,15 @@ class ChannelService:
 
     async def _watchdog_round(self) -> None:
         """Restart a channel that can no longer reach its platform."""
+        # Drop bookkeeping for channels the service no longer tracks, so a
+        # channel re-registered under the same name never inherits a stale
+        # cooldown or failure count.
+        live = set(self._channels)
+        for name in [name for name in self._watchdog_failures if name not in live]:
+            self._watchdog_failures.pop(name, None)
+        for name in [name for name in self._watchdog_cooldown if name not in live]:
+            self._watchdog_cooldown.pop(name, None)
+
         for name, channel in list(self._channels.items()):
             channel_config = self._config.get(name)
             if not isinstance(channel_config, dict) or not channel_config.get("enabled", False):
@@ -381,7 +390,13 @@ class ChannelService:
                 continue
             cooldown = self._watchdog_cooldown.get(name, 0)
             if cooldown > 0:
-                self._watchdog_cooldown[name] = cooldown - 1
+                if channel.is_connected:
+                    # It came back on its own during the cooldown; forget the
+                    # pending restart so the next drop starts from a clean count.
+                    self._watchdog_cooldown.pop(name, None)
+                    self._watchdog_failures.pop(name, None)
+                else:
+                    self._watchdog_cooldown[name] = cooldown - 1
                 continue
             if channel.is_connected:
                 self._watchdog_failures.pop(name, None)

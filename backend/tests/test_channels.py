@@ -11872,6 +11872,60 @@ def test_channel_watchdog_cools_down_after_a_restart():
     _run(go())
 
 
+def test_channel_watchdog_clears_state_when_the_channel_recovers_during_cooldown():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        channel = _WatchdogChannel(connected=False)
+        service._channels = {"feishu": channel}
+        service._watchdog_failure_threshold = 2
+
+        restarted: list[str] = []
+
+        async def fake_restart(name, **kwargs):
+            restarted.append(name)
+            return True
+
+        service.restart_channel = fake_restart
+
+        await service._watchdog_round()
+        await service._watchdog_round()
+        assert restarted == ["feishu"], "threshold reached -> one restart"
+
+        channel.connected = True
+        await service._watchdog_round()
+        assert service._watchdog_cooldown.get("feishu", 0) == 0, "a live channel ends the cooldown"
+
+        # The next drop starts from a clean count, so it needs the full threshold.
+        channel.connected = False
+        await service._watchdog_round()
+        assert restarted == ["feishu"], "one miss is not enough after a recovery"
+        await service._watchdog_round()
+        assert restarted == ["feishu", "feishu"]
+
+    _run(go())
+
+
+def test_channel_watchdog_drops_state_for_removed_channels():
+    from app.channels.service import ChannelService
+
+    async def go():
+        service = ChannelService(channels_config={})
+        service._config = {"feishu": {"enabled": True}}
+        service._channels = {}  # the channel is gone
+        service._watchdog_failures = {"feishu": 2}
+        service._watchdog_cooldown = {"feishu": 3}
+
+        await service._watchdog_round()
+
+        assert service._watchdog_failures == {}, "a removed channel must not keep a failure count"
+        assert service._watchdog_cooldown == {}, "a removed channel must not keep a cooldown"
+
+    _run(go())
+
+
 def test_channel_watchdog_retries_after_a_deferred_restart():
     from app.channels.service import ChannelService
 
