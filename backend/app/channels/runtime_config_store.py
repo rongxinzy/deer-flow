@@ -114,7 +114,12 @@ def _runtime_channel_disconnected(runtime_config: dict[str, Any]) -> bool:
 # a declarative change (for example a new bot_name) ineffective. They are
 # stripped when persisting and ignored when merging, so a value already stored
 # cannot revive.
-DECLARED_CHANNEL_KEYS = ("bot_name", "group_trigger")
+#
+# `domain` (feishu open-platform endpoint) and `ws_url` (wecom bot websocket
+# endpoint) are declared too: the operator renders them from the CR so a
+# deployment can point a channel at a mock or a self-hosted gateway, and a
+# persisted copy would otherwise keep the old address across a CR change.
+DECLARED_CHANNEL_KEYS = ("bot_name", "group_trigger", "domain", "ws_url")
 
 
 def merge_runtime_channel_configs(

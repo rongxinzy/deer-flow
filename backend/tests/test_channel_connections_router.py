@@ -681,6 +681,8 @@ def test_configure_provider_does_not_persist_declared_keys(tmp_path):
     assert persisted["app_secret"] == "secret"
     assert "bot_name" not in persisted, "the declared key must stay owned by config.yaml"
     assert "group_trigger" not in persisted
+    assert "domain" not in persisted, "a declared endpoint must not be persisted either"
+    assert "ws_url" not in persisted
     # The live in-process config short-circuits the merge on later reads, so
     # saving a credential must not drop the declared key from it: otherwise the
     # running channel loses bot_name until the process reloads config.yaml.

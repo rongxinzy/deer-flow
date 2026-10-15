@@ -70,3 +70,41 @@ def test_declared_key_removed_from_yaml_stays_removed():
     merge_runtime_channel_configs(channels_config, connections, store=store)
 
     assert "bot_name" not in channels_config["feishu"], "a stored name must not revive after the CR clears it"
+
+
+def test_declared_endpoint_keys_stay_owned_by_yaml():
+    # domain/ws_url are rendered from the CR so a deployment can point a channel
+    # at a mock or a self-hosted gateway; a copy persisted earlier must not keep
+    # the old address alive after the CR changes it.
+    channels_config = {
+        "feishu": {"enabled": True, "domain": "http://new-mock:18086"},
+        "wecom": {"enabled": True, "ws_url": "wss://new-gateway:8899"},
+    }
+    connections = SimpleNamespace(
+        enabled=True,
+        feishu=SimpleNamespace(enabled=True),
+        wecom=SimpleNamespace(enabled=True),
+    )
+    store = _store(
+        {
+            "feishu": {"app_id": "cli_x", "enabled": True, "domain": "http://old-mock:18086"},
+            "wecom": {"bot_id": "b", "enabled": True, "ws_url": "wss://old-gateway:8899"},
+        }
+    )
+
+    merge_runtime_channel_configs(channels_config, connections, store=store)
+
+    assert channels_config["feishu"]["domain"] == "http://new-mock:18086"
+    assert channels_config["wecom"]["ws_url"] == "wss://new-gateway:8899"
+    # Credentials still come from the store.
+    assert channels_config["feishu"]["app_id"] == "cli_x"
+
+
+def test_declared_endpoint_key_removed_from_yaml_falls_back_to_the_default():
+    channels_config = {"feishu": {"enabled": True}}  # the CR cleared the endpoint
+    connections = SimpleNamespace(enabled=True, feishu=SimpleNamespace(enabled=True))
+    store = _store({"feishu": {"app_id": "cli_x", "enabled": True, "domain": "http://old-mock:18086"}})
+
+    merge_runtime_channel_configs(channels_config, connections, store=store)
+
+    assert "domain" not in channels_config["feishu"], "clearing the endpoint must fall back to the channel default"
