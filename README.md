@@ -16,6 +16,11 @@ default lead agent with an enterprise instance, employee, department, and owner.
 The labels are supplied as model data and do not change tool authorization;
 see [Configuration Guide](backend/docs/CONFIGURATION.md#prompt-overlays).
 
+OpenViking memory recall verifies indexed entries against their backing directory.
+If verification is unavailable, affected entries are omitted for that read under
+fail-open policy, or a read error is raised under strict policy; stored memory is
+preserved. See [OpenViking failure behavior](docs/OPENVIKING.md#deleted-entries-are-not-recalled).
+
 https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
 
 > [!NOTE]
