@@ -222,6 +222,7 @@ class OpenVikingMemoryManager(MemoryManager):
                     exc_info=True,
                 )
                 return ""
+            documents = self._drop_deleted_documents(documents, peer_id)
             return _format_documents(
                 documents,
                 max_chars=self._config.max_injection_chars,
@@ -292,6 +293,7 @@ class OpenVikingMemoryManager(MemoryManager):
                     exc_info=True,
                 )
                 return []
+            documents = self._drop_deleted_documents(documents, peer_id)
             return [_document_to_fact(document) for document in documents]
         finally:
             self._end_operation()
@@ -745,6 +747,72 @@ class OpenVikingMemoryManager(MemoryManager):
             requester_scoped=self._config.memory_scope == "requester",
         )
 
+    def _drop_deleted_documents(self, documents: list[Any], peer_id: str) -> list[Any]:
+        """Drop recalled entries whose backing file is already gone.
+
+        Retrieval reads the *index*, which can still hold an entry whose file was
+        deleted — a delete that raced a pending index task, or an orphan that a
+        rebuild keeps (``reindex`` rebuilds from the records it can see and
+        reports ``deleted_records=0``). Such an entry still recalls the deleted
+        content, which is exactly what "deleted memory must not be recalled"
+        forbids.
+
+        The filesystem is the authority for existence, so each entry is checked
+        against a listing of its own directory. An entry is dropped only when it
+        is definitively absent from a directory this scope actually reads;
+        anything unverifiable (a URI outside the scope roots, a failed listing)
+        is kept, so a transient error never silently discards memory.
+        """
+
+        if not documents or not self._config.drop_deleted_entries:
+            return documents
+        roots = self._memory_target_uris_for(peer_id)
+        targets: list[tuple[int, str, str]] = []
+        for index, document in enumerate(documents):
+            uri = self._credential_alias(_document_uri(document))
+            if "/" not in uri or not any(uri == root or uri.startswith(root + "/") for root in roots):
+                continue
+            parent, _, name = uri.rpartition("/")
+            if parent and name:
+                targets.append((index, parent, name))
+        if not targets:
+            return documents
+
+        listed: dict[str, set[str] | None] = {}
+        with self._actor_peer_scope(peer_id):
+            for _index, parent, _name in targets:
+                if parent not in listed:
+                    listed[parent] = self._list_child_names(parent)
+
+        keep = [True] * len(documents)
+        for index, parent, name in targets:
+            names = listed[parent]
+            if names is not None and name not in names:
+                keep[index] = False
+        dropped = keep.count(False)
+        if not dropped:
+            return documents
+        logger.info(
+            "Dropped %d recalled OpenViking entries with no backing file; %d kept",
+            dropped,
+            len(documents) - dropped,
+        )
+        return [document for index, document in enumerate(documents) if keep[index]]
+
+    def _list_child_names(self, parent: str) -> set[str] | None:
+        """Names directly under *parent*, or ``None`` when it cannot be read."""
+
+        try:
+            result = self._call_openviking(self._client, "ls", uri=parent, simple=True)
+        except Exception:
+            logger.warning(
+                "Could not list OpenViking memory directory %s; keeping recalled entries unverified",
+                parent,
+                exc_info=True,
+            )
+            return None
+        return {self._credential_alias(uri).rstrip("/").rsplit("/", 1)[-1] for uri in _extract_uris(result)}
+
     def _actor_peer_scope(
         self,
         peer_id: str | None,
@@ -880,9 +948,17 @@ def _format_documents(documents: list[Any], *, max_chars: int) -> str:
     return "\n".join(lines)
 
 
+def _document_uri(document: Any) -> str:
+    """The OpenViking URI a retrieved document points at, if any."""
+
+    metadata = getattr(document, "metadata", {}) or {}
+    uri = metadata.get("openviking_uri") or metadata.get("source")
+    return uri if isinstance(uri, str) else ""
+
+
 def _document_to_fact(document: Any) -> dict[str, Any]:
     metadata = getattr(document, "metadata", {}) or {}
-    uri = metadata.get("openviking_uri") or metadata.get("source") or ""
+    uri = _document_uri(document)
     score = metadata.get("openviking_score")
     return {
         "id": uri,

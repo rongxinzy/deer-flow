@@ -63,6 +63,7 @@ class _Client:
         self.files: dict[str, str] = {}
         self.removals: list[tuple[str, bool]] = []
         self.reads: list[str] = []
+        self.ls_calls: list[str] = []
         self.glob_error: Exception | None = None
 
     def glob(self, *, pattern: str, uri: str) -> list[str]:
@@ -76,6 +77,7 @@ class _Client:
         return self.files[uri]
 
     def ls(self, *, uri: str, simple: bool = False) -> list[str]:
+        self.ls_calls.append(uri)
         if self.glob_error is not None:
             raise self.glob_error
         prefix = uri.rstrip("/") + "/"
@@ -1349,3 +1351,129 @@ def test_requester_scope_fails_closed_without_a_requester(
     )
     assert manager._retriever.calls == []
     assert manager._recorder.calls == []
+
+
+# --------------------------------------------------------------------------
+# Delete propagation: retrieval reads the index, so an entry whose file was
+# already deleted (a delete that raced a pending index task, or an orphan that
+# a rebuild keeps) would still recall the deleted content.
+# --------------------------------------------------------------------------
+
+_STALE_URI = "viking://user/alice/memories/preferences/style.md"
+_STALE_ROOT_URI = "viking://~/memories/preferences/style.md"
+_STALE_PARENT = "viking://~/memories/preferences"
+
+
+def _document(uri: str | None, content: str = "Prefers concise answers.") -> Document:
+    metadata: dict[str, Any] = {
+        "openviking_category": "preferences",
+        "openviking_score": 0.91,
+    }
+    if uri is not None:
+        metadata["openviking_uri"] = uri
+    return Document(page_content=content, metadata=metadata)
+
+
+def _return_documents(*documents: Document) -> Any:
+    """Make every retriever copy return exactly *documents*."""
+
+    def invoke(self: _Retriever, query: str) -> list[Document]:
+        return list(documents)
+
+    return invoke
+
+
+def test_context_drops_recalled_entries_whose_file_is_gone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
+
+    # The index still returns the entry; the store no longer has the file.
+    assert manager._client.files == {}
+
+    assert manager.get_context("alice", agent_name="research") == ""
+    assert manager._client.ls_calls == [_STALE_PARENT]
+
+
+def test_context_keeps_recalled_entries_whose_file_still_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
+    manager._client.files = {_STALE_ROOT_URI: "Prefers concise answers."}
+
+    assert manager.get_context("alice", agent_name="research") == ("- [preferences] Prefers concise answers.")
+    assert manager._client.ls_calls == [_STALE_PARENT]
+
+
+def test_search_drops_recalled_entries_whose_file_is_gone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
+
+    assert manager.search("answer style", top_k=3, user_id="alice", agent_name="research") == []
+
+
+def test_recall_keeps_an_entry_it_cannot_verify(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
+    manager._client.glob_error = RuntimeError("listing unavailable")
+
+    # A failed listing must never silently discard memory.
+    assert manager.get_context("alice", agent_name="research") == ("- [preferences] Prefers concise answers.")
+
+
+def test_recall_keeps_an_entry_without_a_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(None)))
+
+    assert manager.get_context("alice", agent_name="research") == ("- [preferences] Prefers concise answers.")
+    assert manager._client.ls_calls == []
+
+
+def test_recall_skips_the_existence_check_when_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(
+        tmp_path,
+        monkeypatch,
+        retrieval={
+            "top_k": 4,
+            "max_injection_chars": 1_000,
+            "injection_query": "profile preferences and prior decisions",
+            "drop_deleted_entries": False,
+        },
+    )
+    monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
+
+    assert manager.get_context("alice", agent_name="research") == ("- [preferences] Prefers concise answers.")
+    assert manager._client.ls_calls == []
+
+
+def test_drop_deleted_entries_defaults_to_enabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENVIKING_API_KEY", "user-key")
+
+    config = OpenVikingConfig.from_backend_config(_backend_config(tmp_path))
+
+    assert config.drop_deleted_entries is True

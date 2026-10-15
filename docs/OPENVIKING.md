@@ -89,6 +89,7 @@ memory:
       score_threshold: 0.25
       max_injection_chars: 12000
       content_mode: overview
+      drop_deleted_entries: true
       injection_query: >-
         user profile preferences important entities events ongoing goals
         constraints and prior decisions
@@ -152,6 +153,21 @@ Named agents use lowercase OpenViking peer IDs. Names that are not valid peer
 IDs, conflict with the default, or enter the reserved `df-agent-` namespace are
 mapped to collision-resistant IDs. USER-key identity remains the security
 boundary; peers separate memory scopes within that user.
+
+## Deleted entries are not recalled
+
+Retrieval reads OpenViking's index, and an index entry can outlive its file — a
+delete that raced a pending index task, or an orphan that a rebuild keeps
+(`reindex` rebuilds from the records it can see and reports
+`deleted_records=0`). Such an entry still recalls the deleted content.
+
+With `retrieval.drop_deleted_entries: true` (the default), recalled entries are
+checked against the store before they reach the model, and entries whose file is
+gone are dropped. The check costs one listing per directory a recall touches.
+An entry is only dropped when it is definitively absent from a directory this
+scope reads; a URI outside the scope roots, an entry without a URI, or a failed
+listing keeps the entry, so a transient error never silently discards memory.
+Set `drop_deleted_entries: false` to skip the check entirely.
 
 ## Retry and failure behavior
 
