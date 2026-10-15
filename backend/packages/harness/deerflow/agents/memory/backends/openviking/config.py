@@ -56,6 +56,12 @@ class OpenVikingConfig:
     score_threshold: float | None
     max_injection_chars: int
     content_mode: Literal["auto", "abstract", "overview", "read"]
+    # Retrieval reads the index, which can still hold an entry whose file was
+    # already deleted (a delete that raced a pending index task, or an orphan
+    # that a rebuild keeps). Recalled entries are therefore checked against the
+    # filesystem, and ones with no backing file are dropped. Costs one listing
+    # per directory a recall touches; disable only if that is unacceptable.
+    drop_deleted_entries: bool
     injection_query: str
     startup_policy: Literal["fail_fast", "warn"]
     read_failure_policy: Literal["fail_open", "raise"]
@@ -99,6 +105,10 @@ class OpenVikingConfig:
             score_threshold=_optional_float(retrieval.pop("score_threshold", None), "score_threshold"),
             max_injection_chars=_number(retrieval, "max_injection_chars", 12_000, int),
             content_mode=str(retrieval.pop("content_mode", "overview")).lower(),  # type: ignore[arg-type]
+            drop_deleted_entries=_boolean(
+                retrieval.pop("drop_deleted_entries", True),
+                "drop_deleted_entries",
+            ),
             injection_query=str(
                 retrieval.pop(
                     "injection_query",
