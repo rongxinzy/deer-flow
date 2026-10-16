@@ -483,7 +483,10 @@ def _required_runtime_values(
     existing_config = existing_config or {}
     for field in fields:
         raw_value = values.get(field.name, "")
-        if field.type == "password" and raw_value == _MASKED_CREDENTIAL_VALUE:
+        # An omitted secret means "keep"; explicit empty input still fails
+        # required validation. This matches enterprise forms that never echo
+        # saved credentials and preserves the existing masked-value contract.
+        if field.type == "password" and (field.name not in values or raw_value == _MASKED_CREDENTIAL_VALUE):
             existing_value = str(existing_config.get(field.name) or "").strip()
             if existing_value:
                 cleaned[field.name] = existing_value

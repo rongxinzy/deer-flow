@@ -98,6 +98,7 @@ class WeComChannel(Channel):
         self._bot_secret: str | None = None
         self._ws_url: str = ""
         self._ws_client = None
+        self._authenticated = False
         self._ws_task: asyncio.Task | None = None
         self._ws_shutdown_task: asyncio.Future[Any] | None = None
         self._lifecycle_lock = asyncio.Lock()
@@ -159,6 +160,10 @@ class WeComChannel(Channel):
         send_reply_async = cast(Callable[[str, dict[str, Any], str], Awaitable[dict[str, Any]]], send_reply)
         return await send_reply_async(req_id, body, cmd)
 
+    @property
+    def is_connected(self) -> bool:
+        return self.is_running and self._authenticated and self._ws_client is not None and getattr(self._ws_client, "is_connected", False) is True
+
     async def start(self) -> None:
         async with self._lifecycle_lock:
             if self._running:
@@ -197,6 +202,8 @@ class WeComChannel(Channel):
                 self._ws_client.on("message.image", self._on_ws_image)
                 self._ws_client.on("message.file", self._on_ws_file)
                 self._ws_client.on("error", self._on_ws_error)
+                self._ws_client.on("connected", self._on_ws_connected)
+                self._ws_client.on("authenticated", self._on_ws_authenticated)
                 self._ws_client.on("disconnected", self._on_ws_disconnected)
                 self._ws_task = asyncio.create_task(self._ws_client.connect())
                 self._ws_task.add_done_callback(self._on_ws_task_done)
@@ -207,10 +214,14 @@ class WeComChannel(Channel):
 
     def _on_ws_task_done(self, task: asyncio.Task) -> None:
         if task.cancelled():
+            self._authenticated = False
+            self._running = False
             return
         exc = task.exception()
         if exc is None:
             return
+        self._authenticated = False
+        self._running = False
         logger.error(
             "WeCom WebSocket connection task failed: %s. Check that the network/proxy allows wss://openws.work.weixin.qq.com and that bot_id/bot_secret are valid.",
             exc,
@@ -219,7 +230,15 @@ class WeComChannel(Channel):
     def _on_ws_error(self, error: Any) -> None:
         logger.error("WeCom WebSocket error: %s", error)
 
+    def _on_ws_connected(self, *args: Any) -> None:
+        # Socket establishment precedes the platform's auth response.
+        self._authenticated = False
+
+    def _on_ws_authenticated(self, *args: Any) -> None:
+        self._authenticated = True
+
     def _on_ws_disconnected(self, *args: Any) -> None:
+        self._authenticated = False
         detail = f" ({args[0]})" if args else ""
         logger.warning("WeCom WebSocket disconnected%s; SDK will attempt to reconnect", detail)
 
@@ -256,6 +275,7 @@ class WeComChannel(Channel):
     async def stop(self) -> None:
         async with self._lifecycle_lock:
             self._running = False
+            self._authenticated = False
             self.bus.unsubscribe_outbound(self._on_outbound)
             ws_client = self._ws_client
             ws_task = self._ws_task
