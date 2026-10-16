@@ -23,6 +23,7 @@ from deerflow.agents.memory.backends.openviking.openviking_manager import (
     OpenVikingMemoryManager,
     RequesterScopeError,
     _canonical_peer_id,
+    _fact_file_name,
     _session_id,
 )
 from deerflow.agents.memory.backends.openviking.session import _requester_peer_id
@@ -53,6 +54,15 @@ class _PartialWriteError(RuntimeError):
         self.commit_pending = commit_pending
 
 
+class _AlreadyExistsError(RuntimeError):
+    """Stands in for ``openviking_sdk.errors.AlreadyExistsError``.
+
+    Deliberately not the SDK's class: a lost create race must be recognised from
+    the store's state, never from an error type name the adapter would have to
+    guess.
+    """
+
+
 class _Client:
     supports_request_actor_peer = True
 
@@ -63,6 +73,7 @@ class _Client:
         self.files: dict[str, str] = {}
         self.removals: list[tuple[str, bool]] = []
         self.reads: list[str] = []
+        self.writes: list[tuple[str, str, str, bool]] = []
         self.ls_calls: list[str] = []
         self.glob_error: Exception | None = None
 
@@ -82,6 +93,13 @@ class _Client:
             raise self.glob_error
         prefix = uri.rstrip("/") + "/"
         return sorted({prefix + path[len(prefix) :].split("/", 1)[0] for path in self.files if path.startswith(prefix)})
+
+    def write(self, *, uri: str, content: str, mode: str = "replace", wait: bool = False, **_kwargs: Any) -> dict[str, Any]:
+        self.writes.append((uri, content, mode, wait))
+        if mode == "create" and uri in self.files:
+            raise _AlreadyExistsError(f"File already exists: {uri}")
+        self.files[uri] = content
+        return {"uri": uri, "mode": mode, "wait": wait}
 
     def rm(self, *, uri: str, recursive: bool = False, **_kwargs: Any) -> None:
         self.removals.append((uri, recursive))
@@ -1477,3 +1495,315 @@ def test_drop_deleted_entries_defaults_to_enabled(
     config = OpenVikingConfig.from_backend_config(_backend_config(tmp_path))
 
     assert config.drop_deleted_entries is True
+
+
+# --------------------------------------------------------------------------
+# Fact write surface: create_fact / update_fact write an ordinary memory file
+# under the actor's own root, so a creation is recallable and an update is what
+# recall returns next.
+# --------------------------------------------------------------------------
+
+_FACT_UPDATED = "ZD-9 终值 4321。"
+_FACT_CREATED = "ZD-9 初值 1111。"
+
+
+def _store_backed_invoke() -> Any:
+    """Make recall read the fake store, so a write becomes observable.
+
+    Stands in for OpenViking's semantic search with a literal, case-insensitive
+    substring match over the files under ``target_uri`` -- enough to show that a
+    created fact is recallable, that an update replaces what recall returns, and
+    that no longer matching content stops being recalled. It models neither
+    ranking nor embeddings.
+    """
+
+    def invoke(self: _Retriever, query: str) -> list[Document]:
+        targets = self.target_uri if isinstance(self.target_uri, list) else [self.target_uri]
+        needle = query.strip().casefold()
+        documents = []
+        for uri, content in self.client.files.items():
+            if not any(target and (uri == target or uri.startswith(target.rstrip("/") + "/")) for target in targets):
+                continue
+            if needle not in content.casefold():
+                continue
+            documents.append(
+                Document(
+                    page_content=content,
+                    metadata={"openviking_uri": uri, "openviking_category": "memory", "openviking_score": 0.9},
+                )
+            )
+        return documents
+
+    return invoke
+
+
+def test_create_fact_writes_a_memory_file_that_recall_and_get_memory_see(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _store_backed_invoke())
+    uri = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_CREATED)}"
+
+    document, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+
+    # mode="create" keeps a concurrent creator of the same fact from
+    # overwriting, and wait=True is what makes the very next search see it.
+    assert manager._client.writes == [(uri, _FACT_CREATED, "create", True)]
+    assert fact_id == uri
+    assert [(fact["id"], fact["content"]) for fact in document["facts"]] == [(uri, _FACT_CREATED)]
+    assert [fact["id"] for fact in manager.search("1111", user_id="alice", agent_name="research")] == [uri]
+    assert [fact["id"] for fact in manager.get_memory(user_id="alice", agent_name="research")["facts"]] == [uri]
+
+
+def test_create_fact_returns_the_uri_the_server_stored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    stored: list[str] = []
+    write_file = _Client.write
+
+    def normalizing_write(self: _Client, *, uri: str, content: str, mode: str = "replace", wait: bool = False, **kwargs: Any) -> dict[str, Any]:
+        # The live server does not store every character it is handed: it expands
+        # the "~" alias and rewrites characters such as a space to "_", so only
+        # the write response names the entry a later search or delete will see.
+        rewritten = uri.replace("df-fact-", "df_fact-")
+        stored.append(rewritten)
+        return write_file(self, uri=rewritten, content=content, mode=mode, wait=wait, **kwargs)
+
+    monkeypatch.setattr(_Client, "write", normalizing_write)
+
+    document, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+
+    assert stored == [fact_id]
+    assert fact_id != f"viking://~/peers/research/memories/{_fact_file_name(_FACT_CREATED)}"
+    assert [fact["id"] for fact in document["facts"]] == [fact_id]
+
+
+def test_create_fact_rejects_a_duplicate_of_the_same_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    with pytest.raises(ValueError, match="Duplicate fact"):
+        manager.create_fact(f"  {_FACT_CREATED.lower()}  ", user_id="alice", agent_name="research")
+
+    # Both spellings normalize to one URI, so the race is settled at the server
+    # and the entry keeps the content that won.
+    assert list(manager._client.files) == [fact_id]
+    assert manager._client.files[fact_id] == _FACT_CREATED
+    assert manager._client.writes[-1][2] == "create"
+
+
+def test_create_fact_does_not_report_a_duplicate_for_another_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    def failing_write(self: _Client, **_kwargs: Any) -> dict[str, Any]:
+        raise RuntimeError("openviking unreachable")
+
+    monkeypatch.setattr(_Client, "write", failing_write)
+
+    # A transport failure must not be translated into "the fact already exists".
+    with pytest.raises(RuntimeError, match="unreachable"):
+        manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+
+
+def test_create_fact_validates_content_and_confidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="content"):
+        manager.create_fact("   ", user_id="alice", agent_name="research")
+    with pytest.raises(ValueError, match="confidence"):
+        manager.create_fact(_FACT_CREATED, confidence=1.5, user_id="alice", agent_name="research")
+    with pytest.raises(ValueError, match="confidence"):
+        manager.create_fact(_FACT_CREATED, confidence=True, user_id="alice", agent_name="research")
+
+    assert manager._client.writes == []
+
+
+def test_create_fact_refuses_another_deerflow_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    with pytest.raises(MemoryManagerError, match="owner_user_id 'alice'"):
+        manager.create_fact(_FACT_CREATED, user_id="bob", agent_name="research")
+
+    assert manager._client.writes == []
+
+
+def test_create_fact_without_an_agent_writes_into_the_actor_memory_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    uri = f"viking://~/memories/{_fact_file_name(_FACT_CREATED)}"
+
+    # The gateway's create endpoint calls without an agent name; the fact goes to
+    # the user-level root, which every agent scope already recalls.
+    document, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice")
+
+    assert manager._client.writes == [(uri, _FACT_CREATED, "create", True)]
+    assert fact_id == uri
+    assert [fact["id"] for fact in document["facts"]] == [uri]
+
+
+def test_create_fact_requester_scope_never_falls_back_to_the_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch, memory_scope="requester")
+
+    with pytest.raises(RequesterScopeError):
+        manager.create_fact(_FACT_CREATED, user_id="alice")
+    assert manager._client.writes == []
+
+    _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", requester_id="alice")
+    assert fact_id == f"viking://~/peers/{_requester_peer_id('alice')}/memories/{_fact_file_name(_FACT_CREATED)}"
+
+
+def test_create_fact_after_shutdown_reports_not_stored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    manager.close()
+
+    # None is the "not stored" signal callers such as memory_add already handle.
+    assert manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research") == ({"facts": []}, None)
+    assert manager._client.writes == []
+
+
+def test_update_fact_replaces_the_content_recall_returns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    monkeypatch.setattr(_Retriever, "invoke", _store_backed_invoke())
+    _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+
+    document = manager.update_fact(fact_id, content=_FACT_UPDATED, user_id="alice", agent_name="research")
+
+    assert manager._client.writes[-1] == (fact_id, _FACT_UPDATED, "replace", True)
+    assert [fact["content"] for fact in document["facts"]] == [_FACT_UPDATED]
+    assert manager.search("1111", user_id="alice", agent_name="research") == []
+    assert [fact["content"] for fact in manager.search("4321", user_id="alice", agent_name="research")] == [_FACT_UPDATED]
+
+
+def test_update_fact_skips_a_rewrite_of_unchanged_content(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    writes = list(manager._client.writes)
+
+    document = manager.update_fact(fact_id, content=f"  {_FACT_CREATED}  ", user_id="alice", agent_name="research")
+
+    assert manager._client.writes == writes
+    assert [fact["content"] for fact in document["facts"]] == [_FACT_CREATED]
+
+
+def test_update_fact_accepts_omitted_fields_and_validates_confidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    uri = "viking://~/peers/research/memories/style.md"
+    manager._client.files = {uri: "Prefers concise answers."}
+
+    # Category and confidence have no representation in an OpenViking memory
+    # file, so a patch carrying neither content nor a real change writes nothing.
+    document = manager.update_fact(uri, category="preferences", confidence=0.9, user_id="alice", agent_name="research")
+
+    assert manager._client.writes == []
+    assert [fact["content"] for fact in document["facts"]] == ["Prefers concise answers."]
+    with pytest.raises(ValueError, match="confidence"):
+        manager.update_fact(uri, confidence=2.0, user_id="alice", agent_name="research")
+    with pytest.raises(ValueError, match="content"):
+        manager.update_fact(uri, content="   ", user_id="alice", agent_name="research")
+    with pytest.raises(ValueError, match="fact id"):
+        manager.update_fact("", content="Prefers tabs.", user_id="alice", agent_name="research")
+
+
+def test_update_fact_refuses_an_unknown_or_foreign_fact_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    manager._client.files = {"viking://~/peers/research/memories/style.md": "Prefers concise answers."}
+
+    with pytest.raises(KeyError):
+        manager.update_fact(f"viking://~/peers/research/memories/df-fact-{'0' * 32}.md", content="Prefers tabs.", user_id="alice", agent_name="research")
+    with pytest.raises(MemoryManagerError, match="outside this actor's scope"):
+        manager.update_fact("viking://~/peers/other/memories/secret.md", content="Prefers tabs.", user_id="alice", agent_name="research")
+    with pytest.raises(MemoryManagerError, match="owner_user_id 'alice'"):
+        manager.update_fact("viking://~/peers/research/memories/style.md", content="Prefers tabs.", user_id="bob", agent_name="research")
+
+    assert manager._client.writes == []
+
+
+@pytest.mark.parametrize("uri", ["viking://~/peers/research/memories/preferences/", "viking://~/peers/research/memories/../secret.md"])
+def test_update_fact_refuses_a_directory_or_traversal_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+    uri: str,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+
+    with pytest.raises(MemoryManagerError):
+        manager.update_fact(uri, content="Prefers tabs.", user_id="alice", agent_name="research")
+
+    assert manager._client.writes == []
+
+
+def test_governance_reads_skip_extraction_directories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    own = "viking://~/peers/research/memories/fact.md"
+    extracted = "viking://~/peers/research/memories/preferences/alice/style.md"
+    manager._client.files = {own: "Fact.", extracted: "Extracted preference."}
+
+    def glob(*, pattern: str, uri: str) -> list[str]:
+        prefix = uri.rstrip("/") + "/"
+        matches = [path for path in manager._client.files if path.startswith(prefix)]
+        if pattern == "**/*":
+            # The live glob reports directories too; reading one back as a file
+            # fails, which used to break every governance read as soon as
+            # extraction had created its first memories/<type>/ directory.
+            matches += [f"{prefix}preferences/", f"{prefix}preferences/alice/"]
+        return matches
+
+    monkeypatch.setattr(manager._client, "glob", glob)
+
+    document = manager.get_memory(user_id="alice", agent_name="research")
+
+    assert [fact["id"] for fact in document["facts"]] == [own, extracted]
+    assert manager._client.reads == [own, extracted]

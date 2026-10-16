@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import json
 import logging
 import os
@@ -11,6 +12,7 @@ import threading
 import time
 import weakref
 from contextlib import AbstractContextManager
+from math import isfinite
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 from urllib.parse import unquote
@@ -342,10 +344,7 @@ class OpenVikingMemoryManager(MemoryManager):
             facts: list[dict[str, Any]] = []
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
                 for uri in self._scope_uris(user_id, agent_name, requester_id):
-                    content = self._call_openviking(self._client, "read", uri=uri)
-                    if isinstance(content, bytes | bytearray):
-                        content = content.decode("utf-8", errors="replace")
-                    facts.append({"id": uri, "content": str(content), "source": uri})
+                    facts.append({"id": uri, "content": self._read_fact(uri), "source": uri})
             return {"facts": facts}
         finally:
             self._end_operation()
@@ -376,6 +375,114 @@ class OpenVikingMemoryManager(MemoryManager):
                     agent_name=agent_name,
                     requester_id=requester_id,
                 )
+            return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
+        finally:
+            self._end_operation()
+
+    def create_fact(
+        self,
+        content: str,
+        category: str = "context",
+        confidence: float = 0.5,
+        *,
+        agent_name: str | None = None,
+        user_id: str | None = None,
+        requester_id: str | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Write one manually authored fact; return ``(memory document, fact id)``.
+
+        The fact becomes an ordinary OpenViking memory file under the actor's own
+        memory root -- the same place recall and the governance reads look, so no
+        scope is widened to make it visible. The file name is derived from the
+        normalized content rather than from a random id or from raw text: the
+        same fact therefore always maps to the same URI, and the write is issued
+        with ``mode="create"`` so a concurrent creator of the same fact loses the
+        race at the server instead of overwriting or duplicating the entry. That
+        rejection is reported as ``ValueError("Duplicate fact")`` -- the
+        duplicate contract the gateway maps to 409 and ``memory_add`` reports as
+        an error -- but only once the file at that URI is confirmed to hold the
+        same normalized content; any other failure is re-raised so a real error
+        is never disguised as a duplicate.
+
+        ``category`` and ``confidence`` are accepted because the gateway and the
+        ``memory_add`` tool always send them, and both are validated, but an
+        OpenViking memory file carries content only: the store derives an entry's
+        category from its directory, and recall reports that derived category
+        rather than DeerFlow's label. Nothing is written for them, which is also
+        how ``update_fact`` preserves them.
+
+        ``wait=True`` makes the write synchronous: OpenViking indexes new content
+        in the background, and without it a recall issued right after a create
+        can still miss the entry.
+
+        The returned fact id is the URI OpenViking stored the entry at (the
+        concrete ``viking://user/...`` form, which is what ``search`` and
+        ``get_memory`` report), not the ``viking://~`` alias this backend
+        requested. ``fact_id`` is ``None``, with an empty document, when the
+        backend is already shut down and the write was dropped -- the same
+        "not stored" signal a capacity-evicted fact produces.
+        """
+
+        normalized = str(content or "").strip()
+        if not normalized:
+            raise ValueError("content")
+        _validate_confidence(confidence)
+        # Deliberately not persisted; see the docstring.
+        del category
+        if not self._begin_operation():
+            logger.warning("OpenViking fact creation ignored after backend shutdown")
+            return {"facts": []}, None
+        try:
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
+                requested = self._fact_uri(normalized, user_id, agent_name, requester_id)
+                stored = self._write_fact(requested, normalized, create=True)
+            return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id), stored
+        finally:
+            self._end_operation()
+
+    def update_fact(
+        self,
+        fact_id: str,
+        content: str | None = None,
+        category: str | None = None,
+        confidence: float | None = None,
+        *,
+        agent_name: str | None = None,
+        user_id: str | None = None,
+        requester_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Replace the content of one existing fact; return the memory document.
+
+        ``fact_id`` is the URI ``search``/``get_memory`` returned, and the same
+        scope checks as ``delete_fact`` run before anything is written. A fact id
+        this actor does not currently list raises ``KeyError`` -- the gateway's
+        404 -- while an unreachable backend keeps raising its transport error, so
+        "absent" and "unreadable" never collapse into one answer.
+
+        An OpenViking memory file holds content only, so ``category`` and
+        ``confidence`` are validated and preserved by omission. Rewriting a fact
+        with the content it already holds is a no-op rather than a rewrite: the
+        entry keeps its URI and no reindex is spent on unchanged bytes.
+        """
+
+        if not fact_id:
+            raise ValueError("OpenViking update_fact requires a fact id (its OpenViking URI)")
+        normalized = content.strip() if content is not None else None
+        if normalized is not None and not normalized:
+            raise ValueError("content")
+        if confidence is not None:
+            _validate_confidence(confidence)
+        # Deliberately not persisted; see the docstring.
+        del category
+        if not self._begin_operation():
+            return {"facts": []}
+        try:
+            with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
+                uri = self._assert_own_uri(fact_id, user_id, agent_name, requester_id)
+                if not self._lists_uri(uri, user_id, agent_name, requester_id):
+                    raise KeyError(fact_id)
+                if normalized is not None and not self._holds_content(uri, normalized):
+                    self._write_fact(uri, normalized, create=False)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -437,6 +544,13 @@ class OpenVikingMemoryManager(MemoryManager):
     def _scope_uris(self, user_id: str | None, agent_name: str | None, requester_id: str | None = None) -> list[str]:
         """Every memory file URI under the actor's scope roots.
 
+        Enumerations of a memory root also report the directories inside it --
+        extraction writes its entries as ``memories/<type>/...`` -- and a
+        directory is not a fact: reading one back as a file fails, which used to
+        break every governance read as soon as the store held a single
+        extraction directory. Directories are therefore skipped, and only files
+        are validated and returned.
+
         Enumeration failures propagate: an unreachable OpenViking must surface
         as an error, not as an empty memory.
         """
@@ -448,11 +562,103 @@ class OpenVikingMemoryManager(MemoryManager):
             for pattern in ("*", "**/*"):
                 result = self._call_openviking(self._client, "glob", pattern=pattern, uri=root)
                 for uri in _extract_uris(result):
-                    self._validate_memory_uri(self._credential_alias(uri), [root])
+                    alias = self._credential_alias(uri)
+                    if alias.endswith("/"):
+                        continue
+                    self._validate_memory_uri(alias, [root])
                     if uri not in seen:
                         seen.add(uri)
                         uris.append(uri)
         return uris
+
+    def _read_fact(self, uri: str) -> str:
+        """Read one memory file's text exactly as ``read`` returns it."""
+
+        content = self._call_openviking(self._client, "read", uri=uri)
+        if isinstance(content, bytes | bytearray):
+            content = content.decode("utf-8", errors="replace")
+        return str(content)
+
+    def _lists_uri(self, uri: str, user_id: str | None, agent_name: str | None, requester_id: str | None = None) -> bool:
+        """Whether *uri* is one of the memory files this actor lists right now.
+
+        The existence check for a write is a listing, not a read: a failed read
+        means "absent or unreachable" and the two must not collapse into the
+        404 a ``KeyError`` produces.
+        """
+
+        alias = self._credential_alias(uri)
+        return any(alias == self._credential_alias(candidate) for candidate in self._scope_uris(user_id, agent_name, requester_id))
+
+    def _holds_content(self, uri: str, content: str) -> bool:
+        """Whether *uri* already holds the same normalized content."""
+
+        try:
+            existing = self._read_fact(uri)
+        except Exception:
+            return False
+        return _fact_content_key(existing) == _fact_content_key(content)
+
+    def _fact_uri(
+        self,
+        content: str,
+        user_id: str | None,
+        agent_name: str | None,
+        requester_id: str | None = None,
+    ) -> str:
+        """The memory file URI a manually created fact is written to.
+
+        A whole-actor write (no ``agent_name``, instance scope) goes into the
+        user-level ``memories`` root, which every agent scope already recalls; an
+        agent-scoped or requester-scoped write goes into that actor peer's own
+        ``memories`` directory. Both are roots ``_scope_roots`` lists, so the new
+        fact is visible to ``get_memory`` and to recall without widening any
+        scope. Resolving the scope first also refuses a foreign DeerFlow user
+        before OpenViking is contacted.
+
+        No category subdirectory is created: OpenViking's category vocabulary
+        does not cover DeerFlow's free-form labels, and its recall filter matches
+        the category it derives from an entry rather than a directory name chosen
+        here, so a label directory would only add a directory that every
+        governance read then has to step over.
+        """
+
+        peer_id = self._resolve_scope(user_id, agent_name, requester_id)
+        root = f"viking://~/peers/{peer_id}/memories" if agent_name is not None or self._config.memory_scope == "requester" else "viking://~/memories"
+        return f"{root}/{_fact_file_name(content)}"
+
+    def _write_fact(self, uri: str, content: str, *, create: bool) -> str:
+        """Write one fact file; return the URI OpenViking stored it at.
+
+        ``mode="create"`` is what makes a concurrent create safe: two callers
+        holding the same fact race for the same URI and OpenViking rejects the
+        loser instead of letting it overwrite. ``mode="replace"`` is the update
+        form. ``wait=True`` is required in both cases, because OpenViking indexes
+        new content in the background and a recall issued right after the write
+        would otherwise miss it.
+
+        The write response, not the requested URI, is authoritative: the server
+        expands the ``viking://~`` alias to the concrete ``viking://user/...``
+        form and rewrites characters it does not store (a space in a path arrives
+        as ``_``), so only the response names the entry a later ``search`` or
+        ``delete_fact`` will see.
+        """
+
+        try:
+            result = self._call_openviking(
+                self._client,
+                "write",
+                uri=uri,
+                content=content,
+                mode="create" if create else "replace",
+                wait=True,
+            )
+        except Exception as exc:
+            if create and self._holds_content(uri, content):
+                raise ValueError("Duplicate fact") from exc
+            raise
+        stored = result.get("uri") if isinstance(result, dict) else None
+        return stored if isinstance(stored, str) and stored else uri
 
     def _assert_own_uri(self, uri: str, user_id: str | None, agent_name: str | None, requester_id: str | None = None) -> str:
         roots = self._scope_roots(user_id, agent_name, requester_id)
@@ -480,6 +686,11 @@ class OpenVikingMemoryManager(MemoryManager):
     def _validate_memory_uri(uri: str, roots: list[str]) -> str:
         if "\\" in uri or ".." in uri.split("/") or "." in uri.split("/") or unquote(uri) != uri or "?" in uri or "#" in uri:
             raise MemoryManagerError(f"refusing to modify a suspicious memory URI: {uri}")
+        if uri.endswith("/"):
+            # A memory root and every extraction-created category directory are
+            # directories; none of them is a fact, and `rm`/`write` on one either
+            # fails server-side or would take the whole subtree with it.
+            raise MemoryManagerError(f"refusing to modify a memory directory: {uri}")
         if not any(uri == root or uri.startswith(root + "/") for root in roots):
             raise MemoryManagerError(f"refusing to modify a memory URI outside this actor's scope: {uri}")
         return uri
@@ -968,6 +1179,49 @@ def _document_to_fact(document: Any) -> dict[str, Any]:
         "source": uri,
         "score": score,
     }
+
+
+def _fact_content_key(content: str) -> str:
+    """The normalization every layer already compares fact content with.
+
+    ``memory_add``'s fast-path duplicate check and the DeerMem backend both use
+    ``str.strip().casefold()`` (``_memory_content_key`` / ``_fact_content_key``).
+    Deriving a fact's URI from the same key is what keeps the duplicate check a
+    caller performs before writing and the identity the store ends up with from
+    disagreeing.
+    """
+
+    return content.strip().casefold()
+
+
+def _fact_file_name(content: str) -> str:
+    """A stable, path-safe OpenViking file name for one fact's content.
+
+    Content-derived rather than random: the same fact maps to the same URI for
+    every writer and process, which is what turns a concurrent duplicate into a
+    rejected create instead of a second entry. The digest also keeps raw text out
+    of the URI -- OpenViking rewrites characters such as a space in a written
+    path (``fact-f 空格.md`` is stored as ``fact-f_空格.md`` and the requested URI
+    then no longer reads back), so a name built from content could never be
+    trusted as the fact id. ``.md`` is required: OpenViking refuses a new file
+    without one of its known text extensions.
+    """
+
+    digest = hashlib.sha256(_fact_content_key(content).encode("utf-8")).hexdigest()[:32]
+    return f"df-fact-{digest}.md"
+
+
+def _validate_confidence(confidence: Any) -> float:
+    """Reject a confidence outside the range the fact contract allows.
+
+    Mirrors the DeerMem backend's validation -- including rejecting a ``bool``
+    that would otherwise pass as ``0``/``1`` -- but reports a ValueError instead
+    of raising TypeError out of ``isfinite`` for a non-numeric value.
+    """
+
+    if isinstance(confidence, bool) or not isinstance(confidence, int | float) or not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("confidence")
+    return float(confidence)
 
 
 def _extract_uris(value: Any) -> list[str]:
