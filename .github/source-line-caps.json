@@ -125,7 +125,7 @@
     "frontend/tests/unit/core/threads/local-turn-order.dom.test.tsx": 1151,
     "backend/app/channels/telegram.py": 1146,
     "backend/tests/support/detectors/blocking_io_static.py": 1139,
-    "backend/app/channels/dingtalk.py": 1137,
+    "backend/app/channels/dingtalk.py": 1136,
     "backend/packages/harness/deerflow/extensions/manager.py": 1127,
     "frontend/src/components/workspace/capabilities/lark-plugin-settings.tsx": 1122,
     "backend/tests/support/detectors/thread_boundaries.py": 1120,
