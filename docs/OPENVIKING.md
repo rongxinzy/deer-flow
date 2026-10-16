@@ -172,10 +172,19 @@ as an error) instead of overwriting or duplicating the entry. That rejection is
 only reported once the file at that URI is confirmed to hold the same content, so
 an unreachable or failing backend still surfaces as its own error.
 
-`update_fact` replaces the content of an existing entry, addressed by the URI
+`update_fact` changes the content of an entry addressed by the URI
 `search`/`get_memory` returned. An id outside the actor's scope is refused, and a
 fact this actor does not currently list is reported as `KeyError` (the gateway's
-404) rather than as an empty document. Both writes pass `wait=true`, because
+404) rather than as an empty document. Because the file name is the digest of the
+content, changed content is written to the URI that content names — a *create*,
+like `create_fact` — and the old URI is removed only once that write has been
+confirmed, so a failed or refused write leaves the fact where it was. The
+document the call returns therefore reports the fact under its new URI, and a
+`create` of the old body afterwards is a normal creation again rather than a race
+for a file that was rewritten underneath its name. An update whose new content is
+already stored at the URI it names is refused as `ValueError("Duplicate fact")`
+(the old file is kept), and a rewrite of the content the fact already holds is a
+no-op. Both writes pass `wait=true`, because
 OpenViking indexes new content in the background and recall would otherwise miss
 a fact created moments earlier.
 

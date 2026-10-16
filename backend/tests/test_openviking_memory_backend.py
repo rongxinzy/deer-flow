@@ -103,6 +103,15 @@ class _Client:
 
     def rm(self, *, uri: str, recursive: bool = False, **_kwargs: Any) -> None:
         self.removals.append((uri, recursive))
+        # The store must agree with the removal, not just record it: the update
+        # path moves a fact to a new URI and later create calls race for the
+        # freed name.
+        if recursive:
+            prefix = uri.rstrip("/") + "/"
+            for path in [p for p in self.files if p == uri or p.startswith(prefix)]:
+                del self.files[path]
+        else:
+            self.files.pop(uri, None)
 
     def health(self) -> bool:
         return self.healthy
@@ -1188,7 +1197,9 @@ def test_governance_accepts_concrete_credential_uris_but_not_foreign_ids(tmp_pat
     own = "viking://user/ov-alice/peers/research/memories/fact.md"
     manager._client.files = {own: "fact"}
     monkeypatch.setattr(manager._client, "ls", lambda **kwargs: ["viking://user/ov-alice/peers/research"])
-    monkeypatch.setattr(manager._client, "glob", lambda **kwargs: [own] if "/research/" in kwargs["uri"] else [])
+    # The patched lister stands in for the concrete-URI glob; it has to agree
+    # with the store about a file the manager has just removed.
+    monkeypatch.setattr(manager._client, "glob", lambda **kwargs: [own] if "/research/" in kwargs["uri"] and own in manager._client.files else [])
     assert [fact["id"] for fact in manager.get_memory(user_id="alice")["facts"]] == [own]
     with pytest.raises(MemoryManagerError):
         manager.delete_fact(own.replace("ov-alice", "ov-bob"), user_id="alice")
@@ -1693,7 +1704,7 @@ def test_create_fact_after_shutdown_reports_not_stored(
     assert manager._client.writes == []
 
 
-def test_update_fact_replaces_the_content_recall_returns(
+def test_update_fact_moves_the_fact_to_the_uri_its_content_names(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     official_integration: None,
@@ -1701,13 +1712,131 @@ def test_update_fact_replaces_the_content_recall_returns(
     manager = _manager(tmp_path, monkeypatch)
     monkeypatch.setattr(_Retriever, "invoke", _store_backed_invoke())
     _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    moved = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_UPDATED)}"
 
     document = manager.update_fact(fact_id, content=_FACT_UPDATED, user_id="alice", agent_name="research")
 
-    assert manager._client.writes[-1] == (fact_id, _FACT_UPDATED, "replace", True)
-    assert [fact["content"] for fact in document["facts"]] == [_FACT_UPDATED]
+    # The name is the digest of the content, so changed content is written to
+    # the URI it names -- with mode="create", like create_fact -- and the old
+    # URI goes only after that write came back.
+    assert manager._client.writes[-1] == (moved, _FACT_UPDATED, "create", True)
+    assert manager._client.removals == [(fact_id, False)]
+    assert manager._client.files == {moved: _FACT_UPDATED}
+    # The response names the fact by the URI it now lives at, not by the one it
+    # was updated through.
+    assert [(fact["id"], fact["content"]) for fact in document["facts"]] == [(moved, _FACT_UPDATED)]
     assert manager.search("1111", user_id="alice", agent_name="research") == []
-    assert [fact["content"] for fact in manager.search("4321", user_id="alice", agent_name="research")] == [_FACT_UPDATED]
+    assert [fact["id"] for fact in manager.search("4321", user_id="alice", agent_name="research")] == [moved]
+
+
+def test_update_fact_leaves_one_copy_of_each_body_creatable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    """A moved fact frees its old name and occupies the new one exactly once.
+
+    The old URI must be free again -- it was removed, not rewritten in place --
+    so a create of the old body is an ordinary creation rather than a lost race
+    against a file whose name no longer describes it. The new URI is occupied by
+    the same content, so a create of the new body loses that race and reports the
+    duplicate contract instead of leaving a second copy.
+    """
+
+    manager = _manager(tmp_path, monkeypatch)
+    _, old_uri = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    new_uri = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_UPDATED)}"
+
+    manager.update_fact(old_uri, content=_FACT_UPDATED, user_id="alice", agent_name="research")
+
+    _, restored = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    assert restored == old_uri
+    assert manager._client.files == {old_uri: _FACT_CREATED, new_uri: _FACT_UPDATED}
+
+    with pytest.raises(ValueError, match="Duplicate fact"):
+        manager.create_fact(_FACT_UPDATED, user_id="alice", agent_name="research")
+
+    assert manager._client.files == {old_uri: _FACT_CREATED, new_uri: _FACT_UPDATED}
+    assert manager._client.removals == [(old_uri, False)]
+
+
+def test_update_fact_keeps_the_old_file_when_the_move_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    manager = _manager(tmp_path, monkeypatch)
+    _, fact_id = manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+    write = _Client.write
+
+    def failing_move(self: _Client, *, uri: str, content: str, mode: str = "replace", wait: bool = False, **kwargs: Any) -> dict[str, Any]:
+        if content == _FACT_UPDATED:
+            raise RuntimeError("openviking unreachable")
+        return write(self, uri=uri, content=content, mode=mode, wait=wait, **kwargs)
+
+    monkeypatch.setattr(_Client, "write", failing_move)
+
+    # Nothing was removed before the new file was confirmed, so the fact is
+    # still exactly where it was -- and still creatable/updatable as itself.
+    with pytest.raises(RuntimeError, match="unreachable"):
+        manager.update_fact(fact_id, content=_FACT_UPDATED, user_id="alice", agent_name="research")
+
+    assert manager._client.removals == []
+    assert manager._client.files == {fact_id: _FACT_CREATED}
+    with pytest.raises(ValueError, match="Duplicate fact"):
+        manager.create_fact(_FACT_CREATED, user_id="alice", agent_name="research")
+
+
+def test_update_fact_moves_within_the_bucket_the_fact_was_written_to(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    """A whole-actor update must not relocate an agent's fact.
+
+    The gateway's whole-actor read spans the user-level root and every peer
+    bucket, and its PATCH carries no agent name. Re-deriving the new URI from
+    the scope would drop such a fact into the user-level root, which every
+    agent recalls: the name changes because the content does, the bucket does
+    not.
+    """
+
+    manager = _manager(tmp_path, monkeypatch)
+    fact_id = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_CREATED)}"
+    manager._client.files = {fact_id: _FACT_CREATED}
+    moved = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_UPDATED)}"
+
+    manager.update_fact(fact_id, content=_FACT_UPDATED, user_id="alice")
+
+    assert manager._client.writes[-1] == (moved, _FACT_UPDATED, "create", True)
+    assert manager._client.removals == [(fact_id, False)]
+    assert manager._client.files == {moved: _FACT_UPDATED}
+
+
+def test_update_fact_replaces_in_place_when_the_name_already_matches_the_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    official_integration: None,
+) -> None:
+    """A store whose name already carries the new digest holds a stale body.
+
+    Reachable by reverting a fact to a body it held before an in-place rewrite,
+    and by a file edited outside DeerFlow. A create at that URI can only lose to
+    the file that is already there, so this is the one case that is a replace:
+    the name is right and the body is what is stale. Nothing is removed, because
+    the fact never left its URI.
+    """
+
+    manager = _manager(tmp_path, monkeypatch)
+    uri = f"viking://~/peers/research/memories/{_fact_file_name(_FACT_UPDATED)}"
+    manager._client.files = {uri: _FACT_CREATED}
+
+    document = manager.update_fact(uri, content=_FACT_UPDATED, user_id="alice", agent_name="research")
+
+    assert manager._client.writes == [(uri, _FACT_UPDATED, "replace", True)]
+    assert manager._client.removals == []
+    assert manager._client.files == {uri: _FACT_UPDATED}
+    assert [(fact["id"], fact["content"]) for fact in document["facts"]] == [(uri, _FACT_UPDATED)]
 
 
 def test_update_fact_skips_a_rewrite_of_unchanged_content(

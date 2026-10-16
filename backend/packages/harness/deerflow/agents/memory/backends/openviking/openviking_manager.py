@@ -460,9 +460,33 @@ class OpenVikingMemoryManager(MemoryManager):
         "absent" and "unreadable" never collapse into one answer.
 
         An OpenViking memory file holds content only, so ``category`` and
-        ``confidence`` are validated and preserved by omission. Rewriting a fact
-        with the content it already holds is a no-op rather than a rewrite: the
-        entry keeps its URI and no reindex is spent on unchanged bytes.
+        ``confidence`` are validated and preserved by omission.
+
+        Changed content moves: the file name is the digest of the fact's
+        normalized content (see ``_fact_file_name``), so a rewritten body
+        belongs at the URI that name derives from, not at the old one. The move
+        keeps the old URI's directory -- the bucket the fact was written to --
+        so it neither widens nor narrows which agents recall it. The new file is
+        created first and the old URI is removed only once that write has been
+        confirmed -- deleting first would lose the fact if the write failed, and
+        replacing in place would leave a name holding content it does not name.
+        That stale name is not merely cosmetic: a later ``create_fact`` of the
+        old body would race for it, lose to ``mode="create"``, and report the
+        failed write instead of restoring the fact. The returned document
+        therefore reports the fact under its new id.
+
+        If the new URI already holds the same normalized content the write
+        loses the create race and raises ``ValueError("Duplicate fact")`` -- the
+        duplicate contract ``create_fact`` follows -- and the old file is left
+        untouched, because the update was refused rather than applied. A fact id
+        whose file already carries the name the new content hashes to (a store
+        written before this move, or a file edited outside DeerFlow) is the one
+        case where the name is right and the body is stale, so its body is
+        replaced in place.
+
+        Rewriting a fact with the content it already holds is a no-op rather
+        than a rewrite: the entry keeps its URI and no reindex is spent on
+        unchanged bytes.
         """
 
         if not fact_id:
@@ -482,7 +506,20 @@ class OpenVikingMemoryManager(MemoryManager):
                 if not self._lists_uri(uri, user_id, agent_name, requester_id):
                     raise KeyError(fact_id)
                 if normalized is not None and not self._holds_content(uri, normalized):
-                    self._write_fact(uri, normalized, create=False)
+                    # Same directory, new name: only the digest changed, and the
+                    # directory is the bucket the fact was written to. Deriving
+                    # the URI from the scope instead would relocate a fact read
+                    # through a whole-actor call out of its agent's bucket (or
+                    # into it), changing which agents recall it.
+                    target = f"{uri.rsplit('/', 1)[0]}/{_fact_file_name(normalized)}"
+                    if self._credential_alias(target) == self._credential_alias(uri):
+                        self._write_fact(target, normalized, create=False)
+                    else:
+                        # Confirmed before the old URI goes: a create that
+                        # fails leaves the fact where it was, and one that is
+                        # rejected as a duplicate keeps that file too.
+                        self._write_fact(target, normalized, create=True)
+                        self._remove_uri(uri, user_id=user_id, agent_name=agent_name, requester_id=requester_id)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -553,6 +590,15 @@ class OpenVikingMemoryManager(MemoryManager):
 
         Enumeration failures propagate: an unreachable OpenViking must surface
         as an error, not as an empty memory.
+
+        A directory is recognised by the trailing slash OpenViking's listings
+        give every one of them, which is the whole signal available here: asking
+        whether a slash-less result is a file would cost a probe request on every
+        governance read, and ``glob`` -- the listing this reads -- reports
+        directories with the slash (``memories/<type>/``). A directory some
+        lister returned without one would be treated as a file, fail ``read``,
+        and surface as a read error for the whole document rather than as a
+        silently skipped entry.
         """
 
         uris: list[str] = []
@@ -632,8 +678,11 @@ class OpenVikingMemoryManager(MemoryManager):
 
         ``mode="create"`` is what makes a concurrent create safe: two callers
         holding the same fact race for the same URI and OpenViking rejects the
-        loser instead of letting it overwrite. ``mode="replace"`` is the update
-        form. ``wait=True`` is required in both cases, because OpenViking indexes
+        loser instead of letting it overwrite. ``mode="replace"`` is for a body
+        rewrite that keeps the file's name -- an ``update_fact`` that moved the
+        content would have used create at the new name, so replace only has to
+        cover a file that already carries the name the new content hashes to.
+        ``wait=True`` is required in both cases, because OpenViking indexes
         new content in the background and a recall issued right after the write
         would otherwise miss it.
 
