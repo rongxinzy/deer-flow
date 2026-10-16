@@ -44,4 +44,4 @@ function Toggle({
   );
 }
 
-export {  toggleVariants };
+export { toggleVariants };

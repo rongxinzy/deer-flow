@@ -184,10 +184,6 @@ export {
   ItemMedia,
   ItemContent,
   ItemActions,
-  
-  
   ItemTitle,
   ItemDescription,
-  
-  
 };

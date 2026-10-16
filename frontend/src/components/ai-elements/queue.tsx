@@ -108,10 +108,7 @@ const QueueItemDescription = ({
 
 type QueueItemActionsProps = ComponentProps<"div">;
 
-const QueueItemActions = ({
-  className,
-  ...props
-}: QueueItemActionsProps) => (
+const QueueItemActions = ({ className, ...props }: QueueItemActionsProps) => (
   <div className={cn("flex gap-1", className)} {...props} />
 );
 
@@ -120,10 +117,7 @@ type QueueItemActionProps = Omit<
   "variant" | "size"
 >;
 
-const QueueItemAction = ({
-  className,
-  ...props
-}: QueueItemActionProps) => (
+const QueueItemAction = ({ className, ...props }: QueueItemActionProps) => (
   <Button
     className={cn(
       "text-muted-foreground hover:bg-muted-foreground/10 hover:text-foreground size-auto rounded p-1 opacity-0 transition-opacity group-hover:opacity-100",
@@ -147,10 +141,7 @@ const QueueItemAttachment = ({
 
 type QueueItemImageProps = ComponentProps<"img">;
 
-const QueueItemImage = ({
-  className,
-  ...props
-}: QueueItemImageProps) => (
+const QueueItemImage = ({ className, ...props }: QueueItemImageProps) => (
   <img
     alt=""
     className={cn("h-8 w-8 rounded border object-cover", className)}
@@ -250,9 +241,7 @@ const QueueSectionLabel = ({
 );
 
 // QueueSectionContent - collapsible content area
-type QueueSectionContentProps = ComponentProps<
-  typeof CollapsibleContent
->;
+type QueueSectionContentProps = ComponentProps<typeof CollapsibleContent>;
 
 const QueueSectionContent = ({
   className,

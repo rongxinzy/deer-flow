@@ -1,13 +1,17 @@
 /** Tailwind v4 and shadcn pull plugins from CSS; Knip does not parse @import in CSS by default. */
 function compileCss(source: string): string {
   const specifiers = new Set<string>();
-  for (const match of source.matchAll(/@(?:import|plugin)\s+['"]([^'"]+)['"]/g)) {
+  for (const match of source.matchAll(
+    /@(?:import|plugin)\s+['"]([^'"]+)['"]/g,
+  )) {
     const specifier = match[1];
     if (specifier) {
       specifiers.add(specifier);
     }
   }
-  return [...specifiers].map((specifier) => `import '${specifier}';`).join("\n");
+  return [...specifiers]
+    .map((specifier) => `import '${specifier}';`)
+    .join("\n");
 }
 
 const config = {
@@ -28,7 +32,11 @@ const config = {
     // Nextra docs sidebar metadata (file-based routing, not imported as modules).
     "src/content/**/_meta.ts",
   ],
-  project: ["src/**/*.{js,jsx,ts,tsx,css}", "scripts/**/*.{js,mjs,cjs}", "tests/**/*.{js,jsx,ts,tsx}"],
+  project: [
+    "src/**/*.{js,jsx,ts,tsx,css}",
+    "scripts/**/*.{js,mjs,cjs}",
+    "tests/**/*.{js,jsx,ts,tsx}",
+  ],
   ignore: [
     // Static demo thread assets served by URL; the HTML/JS bundle references them without imports.
     "public/demo/**",

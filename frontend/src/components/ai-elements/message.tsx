@@ -284,10 +284,7 @@ const MessageBranchNext = ({
 
 type MessageBranchPageProps = HTMLAttributes<HTMLSpanElement>;
 
-const MessageBranchPage = ({
-  className,
-  ...props
-}: MessageBranchPageProps) => {
+const MessageBranchPage = ({ className, ...props }: MessageBranchPageProps) => {
   const { currentBranch, totalBranches } = useMessageBranch();
 
   return (
@@ -303,9 +300,7 @@ const MessageBranchPage = ({
   );
 };
 
-type MessageResponseProps = ComponentProps<
-  typeof ClipboardSafeStreamdown
->;
+type MessageResponseProps = ComponentProps<typeof ClipboardSafeStreamdown>;
 
 const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (

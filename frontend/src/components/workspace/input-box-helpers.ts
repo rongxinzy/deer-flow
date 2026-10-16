@@ -1,8 +1,5 @@
 import { RESERVED_SLASH_SKILL_NAMES, type Skill } from "@/core/skills";
-export {
-  
-  findSuggestionTemplatePlaceholder,
-} from "@/core/suggestions/placeholders";
+export { findSuggestionTemplatePlaceholder } from "@/core/suggestions/placeholders";
 
 const MAX_SKILL_SUGGESTIONS = 6;
 

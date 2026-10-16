@@ -875,9 +875,7 @@ export const PromptInputBody = ({
   <div className={cn("contents", className)} {...props} />
 );
 
-type PromptInputTextareaProps = ComponentProps<
-  typeof InputGroupTextarea
->;
+type PromptInputTextareaProps = ComponentProps<typeof InputGroupTextarea>;
 
 export const PromptInputTextarea = ({
   onChange,
@@ -1073,9 +1071,7 @@ export const PromptInputActionMenuContent = ({
   <DropdownMenuContent align="start" className={cn(className)} {...props} />
 );
 
-type PromptInputActionMenuItemProps = ComponentProps<
-  typeof DropdownMenuItem
->;
+type PromptInputActionMenuItemProps = ComponentProps<typeof DropdownMenuItem>;
 export const PromptInputActionMenuItem = ({
   className,
   ...props
@@ -1176,9 +1172,7 @@ declare global {
   }
 }
 
-type PromptInputSpeechButtonProps = ComponentProps<
-  typeof PromptInputButton
-> & {
+type PromptInputSpeechButtonProps = ComponentProps<typeof PromptInputButton> & {
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   onTranscriptionChange?: (text: string) => void;
 };
@@ -1294,9 +1288,7 @@ const PromptInputSelect = (props: PromptInputSelectProps) => (
   <Select {...props} />
 );
 
-type PromptInputSelectTriggerProps = ComponentProps<
-  typeof SelectTrigger
->;
+type PromptInputSelectTriggerProps = ComponentProps<typeof SelectTrigger>;
 
 const PromptInputSelectTrigger = ({
   className,
@@ -1312,9 +1304,7 @@ const PromptInputSelectTrigger = ({
   />
 );
 
-type PromptInputSelectContentProps = ComponentProps<
-  typeof SelectContent
->;
+type PromptInputSelectContentProps = ComponentProps<typeof SelectContent>;
 
 const PromptInputSelectContent = ({
   className,
@@ -1351,17 +1341,13 @@ const PromptInputHoverCard = ({
   <HoverCard closeDelay={closeDelay} openDelay={openDelay} {...props} />
 );
 
-type PromptInputHoverCardTriggerProps = ComponentProps<
-  typeof HoverCardTrigger
->;
+type PromptInputHoverCardTriggerProps = ComponentProps<typeof HoverCardTrigger>;
 
 const PromptInputHoverCardTrigger = (
   props: PromptInputHoverCardTriggerProps,
 ) => <HoverCardTrigger {...props} />;
 
-type PromptInputHoverCardContentProps = ComponentProps<
-  typeof HoverCardContent
->;
+type PromptInputHoverCardContentProps = ComponentProps<typeof HoverCardContent>;
 
 const PromptInputHoverCardContent = ({
   align = "start",
@@ -1379,10 +1365,9 @@ const PromptInputTabsList = ({
 
 type PromptInputTabProps = HTMLAttributes<HTMLDivElement>;
 
-const PromptInputTab = ({
-  className,
-  ...props
-}: PromptInputTabProps) => <div className={cn(className)} {...props} />;
+const PromptInputTab = ({ className, ...props }: PromptInputTabProps) => (
+  <div className={cn(className)} {...props} />
+);
 
 type PromptInputTabLabelProps = HTMLAttributes<HTMLHeadingElement>;
 
@@ -1475,9 +1460,7 @@ const PromptInputCommandItem = ({
   <CommandItem className={cn(className)} {...props} />
 );
 
-type PromptInputCommandSeparatorProps = ComponentProps<
-  typeof CommandSeparator
->;
+type PromptInputCommandSeparatorProps = ComponentProps<typeof CommandSeparator>;
 
 const PromptInputCommandSeparator = ({
   className,

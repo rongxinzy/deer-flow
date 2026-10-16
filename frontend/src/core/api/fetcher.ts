@@ -8,9 +8,12 @@ import { staticApiResponse } from "./static-response";
 /** HTTP methods that the gateway's CSRFMiddleware checks. */
 type StateChangingMethod = "POST" | "PUT" | "DELETE" | "PATCH";
 
-const STATE_CHANGING_METHODS: ReadonlySet<StateChangingMethod> = new Set(
-  ["POST", "PUT", "DELETE", "PATCH"],
-);
+const STATE_CHANGING_METHODS: ReadonlySet<StateChangingMethod> = new Set([
+  "POST",
+  "PUT",
+  "DELETE",
+  "PATCH",
+]);
 
 /** Mirror of the gateway's ``should_check_csrf`` decision. */
 export function isStateChangingMethod(method: string): boolean {

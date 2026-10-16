@@ -7,8 +7,6 @@ import {
   type DelimitedPreviewResult,
 } from "./delimited-preview-types";
 
-;
-
 /** Find the first record separator outside quoted fields, even in a prefix. */
 function detectRecordNewline(content: string, delimiter: string) {
   let quoted = false;

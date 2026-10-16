@@ -5,10 +5,7 @@ export type SidecarReferenceStateItem = {
   context: SidecarContext;
 };
 
-function isSameSidecarContext(
-  left: SidecarContext,
-  right: SidecarContext,
-) {
+function isSameSidecarContext(left: SidecarContext, right: SidecarContext) {
   return (
     left.type === right.type &&
     left.role === right.role &&

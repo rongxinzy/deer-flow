@@ -195,11 +195,7 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^\p{L}\p{N}_\- ]/gu, "").trim() || "conversation";
 }
 
-function downloadAsFile(
-  content: string,
-  filename: string,
-  mimeType: string,
-) {
+function downloadAsFile(content: string, filename: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -211,10 +207,7 @@ function downloadAsFile(
   URL.revokeObjectURL(url);
 }
 
-function exportThreadAsMarkdown(
-  thread: AgentThread,
-  messages: Message[],
-) {
+function exportThreadAsMarkdown(thread: AgentThread, messages: Message[]) {
   const markdown = formatThreadAsMarkdown(thread, messages);
   const filename = `${sanitizeFilename(titleOfThread(thread))}.md`;
   downloadAsFile(markdown, filename, "text/markdown;charset=utf-8");

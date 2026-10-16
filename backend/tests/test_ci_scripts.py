@@ -21,6 +21,17 @@ def test_check_large_files_passes_on_current_tree() -> None:
     assert proc.returncode == 0, proc.stderr or proc.stdout
 
 
+def test_check_source_line_limits_passes_on_current_tree() -> None:
+    proc = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "check_source_line_limits.py")],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+
+
 def test_ci_aggregate_gate_accepts_skipped_jobs() -> None:
     needs = {
         "changes": {"result": "success"},

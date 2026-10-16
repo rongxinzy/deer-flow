@@ -78,9 +78,7 @@ export const ChainOfThought = memo(
   },
 );
 
-type ChainOfThoughtHeaderProps = ComponentProps<
-  typeof CollapsibleTrigger
-> & {
+type ChainOfThoughtHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
   icon?: React.ReactElement;
 };
 
@@ -190,9 +188,7 @@ export const ChainOfThoughtSearchResult = memo(
   ),
 );
 
-type ChainOfThoughtContentProps = ComponentProps<
-  typeof CollapsibleContent
->;
+type ChainOfThoughtContentProps = ComponentProps<typeof CollapsibleContent>;
 
 export const ChainOfThoughtContent = memo(
   ({ className, children, ...props }: ChainOfThoughtContentProps) => {

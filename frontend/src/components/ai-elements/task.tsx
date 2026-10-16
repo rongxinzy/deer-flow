@@ -11,11 +11,7 @@ import type { ComponentProps } from "react";
 
 type TaskItemFileProps = ComponentProps<"div">;
 
-const TaskItemFile = ({
-  children,
-  className,
-  ...props
-}: TaskItemFileProps) => (
+const TaskItemFile = ({ children, className, ...props }: TaskItemFileProps) => (
   <div
     className={cn(
       "bg-secondary text-foreground inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs",
@@ -68,11 +64,7 @@ export const TaskTrigger = ({
 
 type TaskContentProps = ComponentProps<typeof CollapsibleContent>;
 
-const TaskContent = ({
-  children,
-  className,
-  ...props
-}: TaskContentProps) => (
+const TaskContent = ({ children, className, ...props }: TaskContentProps) => (
   <CollapsibleContent
     className={cn(
       "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground data-[state=closed]:animate-out data-[state=open]:animate-in outline-none",

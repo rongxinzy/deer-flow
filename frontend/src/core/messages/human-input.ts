@@ -256,9 +256,7 @@ function parseFields(value: unknown): HumanInputField[] | undefined {
   return fields;
 }
 
-function parseHumanInputRequest(
-  value: unknown,
-): HumanInputRequest | null {
+function parseHumanInputRequest(value: unknown): HumanInputRequest | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -329,9 +327,7 @@ function parseHumanInputRequest(
   };
 }
 
-function parseHumanInputResponse(
-  value: unknown,
-): HumanInputResponse | null {
+function parseHumanInputResponse(value: unknown): HumanInputResponse | null {
   if (!isRecord(value)) {
     return null;
   }

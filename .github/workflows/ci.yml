@@ -90,6 +90,9 @@ jobs:
       - name: Check tracked file sizes
         run: python3 scripts/check_large_files.py
 
+      - name: Check source file line counts
+        run: python3 scripts/check_source_line_limits.py
+
   dead-code:
     runs-on: ubuntu-latest
     timeout-minutes: 15

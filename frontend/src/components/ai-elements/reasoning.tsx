@@ -123,9 +123,7 @@ export const Reasoning = memo(
   },
 );
 
-type ReasoningTriggerProps = ComponentProps<
-  typeof CollapsibleTrigger
-> & {
+type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
   getThinkingMessage?: (
     isStreaming: boolean,
     duration?: number,
