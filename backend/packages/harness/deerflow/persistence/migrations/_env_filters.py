@@ -145,7 +145,7 @@ def _is_extension_owned(name: object) -> bool:
     return isinstance(name, str) and any(name.startswith(prefix) for prefix in EXTENSION_TABLE_PREFIXES)
 
 
-def include_object(object_, name, type_, reflected, compare_to):  # noqa: ARG001
+def include_object(object_, name, type_, reflected, _compare_to):  # noqa: ARG001
     """Returns False for any LangGraph-owned or extension-owned table, or for an
     index/constraint whose parent table is one of those. Returns True otherwise.
 

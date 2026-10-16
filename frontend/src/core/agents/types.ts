@@ -23,22 +23,6 @@ export interface Agent {
   soul?: string | null;
 }
 
-export interface CreateAgentRequest {
-  name: string;
-  display_name?: string | null;
-  description?: string;
-  model?: string | null;
-  tool_groups?: string[] | null;
-  skills?: string[] | null;
-  mcp_plugins?: string[] | null;
-  knowledge_scope?: KnowledgeScopeSnapshot | null;
-  allowed_subagents?: string[] | null;
-  model_settings?: AgentModelSettings | null;
-  thinking_enabled?: boolean | null;
-  reasoning_effort?: ReasoningEffort | null;
-  soul?: string;
-}
-
 export interface UpdateAgentRequest {
   display_name?: string | null;
   description?: string | null;

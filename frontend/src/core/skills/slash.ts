@@ -24,7 +24,7 @@ export const RESERVED_SLASH_SKILL_NAMES = new Set([
 export const SLASH_SKILL_RE = /^\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\s+|$)/;
 const CONTEXT_COMPACT_ARGUMENT = "compact";
 
-export type SlashSkillReference = {
+type SlashSkillReference = {
   name: string;
   remainingText: string;
 };

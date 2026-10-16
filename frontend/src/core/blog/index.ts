@@ -42,7 +42,7 @@ type LocalizedBlogPost = {
   title: string;
 };
 
-export type BlogIndexData = {
+type BlogIndexData = {
   pageMap: PageMapItem[];
   posts: BlogPost[];
   recentPosts: BlogPost[];

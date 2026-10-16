@@ -28,7 +28,7 @@ export const THREAD_SEARCH_REFETCH_INTERVAL_MS = 5000;
 
 type ThreadSearchFilterParams = Pick<ThreadSearchParams, "metadata">;
 
-export function shouldIncludeSidecarThreads(params: ThreadSearchFilterParams) {
+function shouldIncludeSidecarThreads(params: ThreadSearchFilterParams) {
   const metadata = params.metadata;
   return (
     typeof metadata === "object" &&

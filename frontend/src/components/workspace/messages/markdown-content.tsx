@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils";
 
 import { createMarkdownLinkComponent } from "./markdown-link";
 
-export type MarkdownContentProps = {
+type MarkdownContentProps = {
   content: string;
   isLoading: boolean;
   rehypePlugins?: ClipboardSafeStreamdownProps["rehypePlugins"];

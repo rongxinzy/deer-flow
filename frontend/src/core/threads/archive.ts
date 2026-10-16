@@ -9,12 +9,12 @@ import {
 } from "./hooks";
 import { THREAD_ARCHIVED_METADATA_KEY } from "./utils";
 
-export type ArchiveThreadVariables = {
+type ArchiveThreadVariables = {
   threadId: string;
   archived: boolean;
 };
 
-export type ArchiveThreadOptions = {
+type ArchiveThreadOptions = {
   onSuccess?: (
     data: ThreadMetadataPatchResponse,
     variables: ArchiveThreadVariables,

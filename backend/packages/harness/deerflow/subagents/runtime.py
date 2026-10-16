@@ -170,5 +170,5 @@ class SubagentRuntime:
         await self.start()
         return self
 
-    async def __aexit__(self, exc_type, exc, tb) -> None:
+    async def __aexit__(self, _exc_type, exc, tb) -> None:
         await self.stop()

@@ -1,7 +1,7 @@
 import { getMessageRunId } from "./run-duration";
 import { hasPresentFiles, type MessageGroup } from "./utils";
 
-export interface ArtifactArchiveCandidate {
+interface ArtifactArchiveCandidate {
   runId: string;
 }
 

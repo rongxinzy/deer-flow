@@ -1,6 +1,6 @@
 import type { ChannelConnection, ChannelProviderId } from "./types";
 
-export const CONNECT_POLL_INTERVAL_MS = 2000;
+const CONNECT_POLL_INTERVAL_MS = 2000;
 // Fallback bind window used when the backend response omits or garbles
 // `expires_in`, so a non-finite value can never produce an unbounded poll loop.
 const DEFAULT_CONNECT_EXPIRES_S = 600;
@@ -9,7 +9,7 @@ export interface ConnectPollHandle {
   cancel: () => void;
 }
 
-export interface ConnectPollOptions {
+interface ConnectPollOptions {
   provider: ChannelProviderId;
   expiresInSeconds: number;
   /** Fetch the latest connections — the single source of truth for "connected". */

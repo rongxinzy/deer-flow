@@ -12,7 +12,7 @@ import { useInstallCapability } from "@/core/capabilities/hooks";
 import type { PluginManifest } from "@/core/capabilities/types";
 import { useI18n } from "@/core/i18n/hooks";
 
-export type PluginSettingsProps = {
+type PluginSettingsProps = {
   plugin: PluginManifest;
   onSaved: () => void;
   canManage: boolean;

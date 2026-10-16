@@ -14,7 +14,7 @@ import type { Translations } from "@/core/i18n/locales";
 
 import { clientTranslations } from "./client-translations";
 
-export interface I18nContextType {
+interface I18nContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   t: Translations;

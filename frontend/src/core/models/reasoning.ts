@@ -1,12 +1,7 @@
 import type { Model, ModelReasoningCapabilities } from "./types";
 
 /** The vocabulary DeerFlow's mode presets and legacy profiles use. */
-export const GENERIC_REASONING_EFFORTS = [
-  "minimal",
-  "low",
-  "medium",
-  "high",
-] as const;
+const GENERIC_REASONING_EFFORTS = ["minimal", "low", "medium", "high"] as const;
 
 export type GenericReasoningEffort = (typeof GENERIC_REASONING_EFFORTS)[number];
 

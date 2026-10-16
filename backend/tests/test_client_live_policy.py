@@ -156,7 +156,7 @@ def test_documentation_matches_live_test_commands() -> None:
 
 
 def test_default_ci_workflow_does_not_opt_in_to_live_tests() -> None:
-    workflow = (REPO_ROOT / ".github" / "workflows" / "backend-unit-tests.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     # Assert the exact sharded caller, not the substring `make test` (which
     # `make test-shard` also contains). Otherwise a regression that re-points the
@@ -166,7 +166,7 @@ def test_default_ci_workflow_does_not_opt_in_to_live_tests() -> None:
 
 
 def test_ci_unit_test_workflow_runs_duration_aware_shards() -> None:
-    workflow = (REPO_ROOT / ".github" / "workflows" / "backend-unit-tests.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "shard: [1, 2, 3, 4]" in workflow
     assert "make test-shard SPLITS=4" in workflow

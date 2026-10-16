@@ -6,7 +6,7 @@ export type SetupStatusResponse = {
   registration_enabled?: boolean;
 };
 
-export type SetupStatusCheck = {
+type SetupStatusCheck = {
   checked: boolean;
   status: SetupStatusResponse | null;
 };

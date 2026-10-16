@@ -42,10 +42,10 @@ export type BackgroundTaskDetail = BackgroundTask & {
   input_required: unknown | null;
 };
 
-export const ACTIVE_BACKGROUND_TASK_STATUSES: ReadonlySet<BackgroundTaskStatus> =
+const ACTIVE_BACKGROUND_TASK_STATUSES: ReadonlySet<BackgroundTaskStatus> =
   new Set(["submitted", "working", "input_required"]);
 
-export const ACTIVE_BACKGROUND_TASK_NOTIFICATION_STATUSES: ReadonlySet<BackgroundTaskNotificationStatus> =
+const ACTIVE_BACKGROUND_TASK_NOTIFICATION_STATUSES: ReadonlySet<BackgroundTaskNotificationStatus> =
   new Set(["pending", "claimed", "launching", "retry", "dispatched"]);
 
 export function isActiveBackgroundTask(task: BackgroundTask): boolean {

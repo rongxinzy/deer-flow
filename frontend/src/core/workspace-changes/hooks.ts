@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchWorkspaceChanges } from "./api";
 import type { WorkspaceChangesResponse } from "./types";
 
-export function workspaceChangesQueryKey(
+function workspaceChangesQueryKey(
   threadId: string | undefined,
   runId: string | undefined,
   includeFiles: boolean,

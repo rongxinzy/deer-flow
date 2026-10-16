@@ -7,7 +7,7 @@ import {
   updateFavoriteNames,
 } from "./favorites";
 
-export interface FavoritesSnapshot {
+interface FavoritesSnapshot {
   names: readonly string[];
   persistence: "local" | "memory";
 }

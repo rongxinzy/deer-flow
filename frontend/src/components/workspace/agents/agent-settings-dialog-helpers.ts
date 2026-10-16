@@ -9,7 +9,7 @@ export const MAX_AGENT_OUTPUT_TOKENS = 200_000;
 export const DEFAULT_MODEL_VALUE = "__default__";
 export const INHERIT_VALUE = "__inherit__";
 
-export type ThinkingSelection = "__inherit__" | "on" | "off";
+type ThinkingSelection = "__inherit__" | "on" | "off";
 export type SubagentAccessSelection = "all" | "none" | "selected";
 
 export function allowedSubagentsToSelection(
@@ -67,9 +67,9 @@ export function resolveEffectiveModel(
   return models.find((m) => m.name === modelValue);
 }
 
-export type AgentSettingsValidationError = "temperature" | "max_tokens";
+type AgentSettingsValidationError = "temperature" | "max_tokens";
 
-export type ParsedAgentModelSettings =
+type ParsedAgentModelSettings =
   | {
       ok: true;
       modelSettings: AgentModelSettings | null;

@@ -35,18 +35,3 @@ export function setLocaleInCookie(locale: string): void {
   const maxAge = 365 * 24 * 60 * 60; // 1 year in seconds
   document.cookie = `${LOCALE_COOKIE_NAME}=${encodeURIComponent(locale)}; max-age=${maxAge}; path=/; SameSite=Lax`;
 }
-
-/**
- * Get locale from cookie (server-side)
- * Use this in server components or API routes
- */
-export async function getLocaleFromCookieServer(): Promise<string | null> {
-  try {
-    const { cookies } = await import("next/headers");
-    const cookieStore = await cookies();
-    return cookieStore.get(LOCALE_COOKIE_NAME)?.value ?? null;
-  } catch {
-    // Fallback if cookies() is not available (e.g., in middleware)
-    return null;
-  }
-}

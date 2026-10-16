@@ -11,7 +11,7 @@ import {
 import { browserStreamURL } from "./api";
 import { LatestBrowserFrameBuffer } from "./frame-buffer";
 
-export interface BrowserTab {
+interface BrowserTab {
   index: number;
   title: string;
   url: string;
@@ -31,7 +31,7 @@ export type BrowserInputEvent =
   | { type: "forward" }
   | { type: "activate_tab"; index: number };
 
-export type BrowserStreamStatus = "idle" | "connecting" | "open" | "closed";
+type BrowserStreamStatus = "idle" | "connecting" | "open" | "closed";
 
 const RECONNECT_BASE_DELAY_MS = 800;
 const RECONNECT_MAX_DELAY_MS = 10_000;

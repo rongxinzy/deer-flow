@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import { fetchScheduledTaskRuns } from "./api";
 
-export const RUN_HISTORY_PAGE_SIZE = 50;
+const RUN_HISTORY_PAGE_SIZE = 50;
 
 export function useScheduledTaskRunHistory(taskId: string | undefined) {
   const client = useQueryClient();

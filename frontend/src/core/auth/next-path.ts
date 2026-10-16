@@ -1,4 +1,4 @@
-export const DEFAULT_AUTH_NEXT_PATH = "/workspace";
+const DEFAULT_AUTH_NEXT_PATH = "/workspace";
 
 export function validateAuthNextPath(
   nextPath: string | null | undefined,

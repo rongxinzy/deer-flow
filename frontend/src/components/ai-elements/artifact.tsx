@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { type LucideIcon, XIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes } from "react";
 
-export type ArtifactProps = HTMLAttributes<HTMLDivElement>;
+type ArtifactProps = HTMLAttributes<HTMLDivElement>;
 
 export const Artifact = ({ className, ...props }: ArtifactProps) => (
   <div
@@ -23,7 +23,7 @@ export const Artifact = ({ className, ...props }: ArtifactProps) => (
   />
 );
 
-export type ArtifactHeaderProps = HTMLAttributes<HTMLDivElement>;
+type ArtifactHeaderProps = HTMLAttributes<HTMLDivElement>;
 
 export const ArtifactHeader = ({
   className,
@@ -38,9 +38,9 @@ export const ArtifactHeader = ({
   />
 );
 
-export type ArtifactCloseProps = ComponentProps<typeof Button>;
+type ArtifactCloseProps = ComponentProps<typeof Button>;
 
-export const ArtifactClose = ({
+const ArtifactClose = ({
   className,
   children,
   size = "sm",
@@ -62,7 +62,7 @@ export const ArtifactClose = ({
   </Button>
 );
 
-export type ArtifactTitleProps = HTMLAttributes<HTMLParagraphElement>;
+type ArtifactTitleProps = HTMLAttributes<HTMLParagraphElement>;
 
 export const ArtifactTitle = ({ className, ...props }: ArtifactTitleProps) => (
   <div
@@ -71,16 +71,16 @@ export const ArtifactTitle = ({ className, ...props }: ArtifactTitleProps) => (
   />
 );
 
-export type ArtifactDescriptionProps = HTMLAttributes<HTMLParagraphElement>;
+type ArtifactDescriptionProps = HTMLAttributes<HTMLParagraphElement>;
 
-export const ArtifactDescription = ({
+const ArtifactDescription = ({
   className,
   ...props
 }: ArtifactDescriptionProps) => (
   <p className={cn("text-muted-foreground text-sm", className)} {...props} />
 );
 
-export type ArtifactActionsProps = HTMLAttributes<HTMLDivElement>;
+type ArtifactActionsProps = HTMLAttributes<HTMLDivElement>;
 
 export const ArtifactActions = ({
   className,
@@ -89,7 +89,7 @@ export const ArtifactActions = ({
   <div className={cn("flex items-center gap-1", className)} {...props} />
 );
 
-export type ArtifactActionProps = ComponentProps<typeof Button> & {
+type ArtifactActionProps = ComponentProps<typeof Button> & {
   tooltip?: string;
   label?: string;
   icon?: LucideIcon;
@@ -137,7 +137,7 @@ export const ArtifactAction = ({
   return button;
 };
 
-export type ArtifactContentProps = HTMLAttributes<HTMLDivElement>;
+type ArtifactContentProps = HTMLAttributes<HTMLDivElement>;
 
 export const ArtifactContent = ({
   className,

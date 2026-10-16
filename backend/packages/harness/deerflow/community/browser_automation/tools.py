@@ -109,7 +109,7 @@ class _SessionLease:
     def __enter__(self) -> BrowserSession:
         return self.session
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
+    def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
         self._manager.release_session(self._thread_id, self.session)
 
 

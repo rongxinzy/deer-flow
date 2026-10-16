@@ -161,7 +161,7 @@ class ThreadUploadIngestionService:
         await self.open()
         return self
 
-    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    async def __aexit__(self, _exc_type: Any, exc: Any, tb: Any) -> None:
         await self.aclose()
 
     @property

@@ -4,7 +4,7 @@ import type { GoalState } from "@/core/threads/types";
 
 import { goalReconciliationKey } from "./goal-status-helpers";
 
-export type UseActiveGoalResult = {
+type UseActiveGoalResult = {
   /** The goal to render — the optimistic override while set, else server state. */
   activeGoal: GoalState | null;
   hasGoal: boolean;

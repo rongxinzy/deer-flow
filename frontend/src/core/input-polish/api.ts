@@ -2,13 +2,13 @@ import { throwGatewayApiError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
-export type InputPolishRequest = {
+type InputPolishRequest = {
   text: string;
   locale?: string;
   thread_id?: string;
 };
 
-export type InputPolishResponse = {
+type InputPolishResponse = {
   rewritten_text: string;
   changed: boolean;
 };

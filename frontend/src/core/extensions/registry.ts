@@ -28,7 +28,7 @@ export type LoadedContribution = FrontendContribution & {
   extension?: FrontendExtension;
   error?: string;
 };
-export type ModuleImporter = (url: string) => Promise<{ default: unknown }>;
+type ModuleImporter = (url: string) => Promise<{ default: unknown }>;
 const importModule: ModuleImporter = (url) =>
   import(/* webpackIgnore: true */ url) as Promise<{ default: unknown }>;
 

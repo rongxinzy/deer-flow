@@ -20,13 +20,13 @@ export function shouldShowOfflineBanner(
 }
 
 /** Categorised outcome of a single /auth/me probe. */
-export type ProbeOutcome =
+type ProbeOutcome =
   | { kind: "ok"; user: User } // 2xx with parsed body
   | { kind: "unauthorized" } // 401
   | { kind: "transient" }; // 5xx, network, abort, malformed body, etc.
 
 /** Next action the banner effect should take after a probe. */
-export type ProbeAction =
+type ProbeAction =
   | { type: "apply-user"; user: User }
   | { type: "delegate-refresh"; reason: "session-expired" }
   | { type: "noop"; nextFailureCount: number };

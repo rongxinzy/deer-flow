@@ -20,7 +20,7 @@ export type ManagedModel = Omit<ModelDraft, "api_key"> & {
   has_api_key: boolean;
   conflict?: boolean;
 };
-export type ConfigModel = {
+type ConfigModel = {
   name: string;
   display_name: string;
   model: string;

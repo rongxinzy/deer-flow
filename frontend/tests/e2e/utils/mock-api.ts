@@ -26,7 +26,7 @@ export const THREAD_PINNED_METADATA_KEY = "deerflow_pinned";
 // Keep in sync with frontend runtime thread utils and the backend thread_meta
 // constant; the mock must mirror the same metadata contract for project
 // membership.
-export const THREAD_PROJECT_METADATA_KEY = "deerflow_project_id";
+const THREAD_PROJECT_METADATA_KEY = "deerflow_project_id";
 
 const MOCK_AUTH_USER = {
   id: "default",
@@ -39,7 +39,7 @@ const MOCK_AUTH_USER = {
 // Types
 // ---------------------------------------------------------------------------
 
-export type MockThread = {
+type MockThread = {
   thread_id: string;
   title?: string;
   updated_at?: string;
@@ -50,7 +50,7 @@ export type MockThread = {
   goal?: Record<string, unknown> | null;
 };
 
-export type MockProject = {
+type MockProject = {
   id: string;
   name: string;
   instructions?: string;
@@ -60,7 +60,7 @@ export type MockProject = {
   updated_at?: string;
 };
 
-export type MockProjectDocument = {
+type MockProjectDocument = {
   id: string;
   project_id: string;
   name: string;
@@ -74,12 +74,12 @@ export type MockProjectDocument = {
   updated_at?: string;
 };
 
-export type MockTrashDocument = MockProjectDocument & {
+type MockTrashDocument = MockProjectDocument & {
   trashed_at: string;
   trash_origin?: { project_id: string; project_name: string } | null;
 };
 
-export type MockThreadFileGroup = {
+type MockThreadFileGroup = {
   thread_id: string;
   display_name: string;
   updated_at: string;
@@ -93,7 +93,7 @@ export type MockThreadFileGroup = {
   truncated?: boolean;
 };
 
-export type MockAgent = {
+type MockAgent = {
   name: string;
   display_name?: string | null;
   description?: string;
@@ -102,7 +102,7 @@ export type MockAgent = {
   skills?: string[] | null;
 };
 
-export type MockSkill = {
+type MockSkill = {
   name: string;
   description: string;
   category?: string;
@@ -110,7 +110,7 @@ export type MockSkill = {
   enabled?: boolean;
 };
 
-export type MockAPIOptions = {
+type MockAPIOptions = {
   threads?: MockThread[];
   projects?: MockProject[];
   projectsConfig?: {

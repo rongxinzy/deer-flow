@@ -15,9 +15,6 @@ import { isStaticWebsiteOnly } from "../static-mode";
 
 import { type User, buildLoginUrl } from "./types";
 
-// Re-export for consumers
-export type { User };
-
 /**
  * Authentication context provided to consuming components
  */
@@ -193,25 +190,4 @@ export function useAuth(): AuthContextType {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
-}
-
-/**
- * Hook to require authentication - redirects to login if not authenticated
- * Useful for client-side checks in addition to server-side guards
- */
-export function useRequireAuth(): AuthContextType {
-  const auth = useAuth();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (isStaticWebsiteOnly() || isPlatformMode()) return;
-
-    // Only redirect if we're sure user is not authenticated (not just loading)
-    if (!auth.isLoading && !auth.isAuthenticated) {
-      router.push(buildLoginUrl(pathname || "/workspace"));
-    }
-  }, [auth.isAuthenticated, auth.isLoading, router, pathname]);
-
-  return auth;
 }

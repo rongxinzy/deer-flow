@@ -263,7 +263,3 @@ export const streamdownPluginsWithoutRawHtml = {
     (p) => p !== rehypeRaw,
   ) as StreamdownProps["rehypePlugins"],
 };
-
-// Plugins for reasoning/thinking content — derived from streamdownPlugins but without rehypeRaw,
-// to prevent LLM-hallucinated HTML tags (e.g. <simd>) from being rendered as DOM elements.
-export const reasoningPlugins = streamdownPluginsWithoutRawHtml;

@@ -15,7 +15,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import type { ArtifactDraftState } from "@/core/artifacts/editing";
 import { env } from "@/env";
 
-export interface ArtifactsContextType {
+interface ArtifactsContextType {
   artifacts: string[];
   setArtifacts: (artifacts: string[]) => void;
 

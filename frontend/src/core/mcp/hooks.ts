@@ -52,7 +52,7 @@ export function useEnableMCPServer() {
   return useMutation(getEnableMCPServerMutationOptions(queryClient));
 }
 
-export type MCPServerMutationVariables =
+type MCPServerMutationVariables =
   | {
       operation: "create";
       servers: Record<string, MCPServerConfig>;

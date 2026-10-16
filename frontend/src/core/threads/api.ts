@@ -3,7 +3,7 @@ import { getBackendBaseURL } from "@/core/config";
 
 import type { AgentThread, ThreadTokenUsageResponse } from "./types";
 
-export type ThreadCompactResponse = {
+type ThreadCompactResponse = {
   thread_id: string;
   compacted: boolean;
   reason?: string | null;
@@ -14,13 +14,13 @@ export type ThreadCompactResponse = {
   total_tokens: number;
 };
 
-export type CompactThreadContextOptions = {
+type CompactThreadContextOptions = {
   signal?: AbortSignal;
   agentName?: string | null;
   modelName?: string | null;
 };
 
-export type ThreadBranchResponse = {
+type ThreadBranchResponse = {
   thread_id: string;
   parent_thread_id: string;
   parent_checkpoint_id: string;
@@ -28,7 +28,7 @@ export type ThreadBranchResponse = {
   workspace_clone_mode: string;
 };
 
-export type BranchThreadFromTurnInput = {
+type BranchThreadFromTurnInput = {
   messageId: string;
   messageIds?: string[];
   title?: string;

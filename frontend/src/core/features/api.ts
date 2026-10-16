@@ -20,12 +20,12 @@ export interface FeaturesResponse {
   };
 }
 
-export interface ConversationReferencesCapability {
+interface ConversationReferencesCapability {
   enabled: boolean;
   maxReferences: number;
 }
 
-export interface SubagentBatchesCapability {
+interface SubagentBatchesCapability {
   repositoryAvailable: boolean;
   workerRunning: boolean;
   maxRunning: number;

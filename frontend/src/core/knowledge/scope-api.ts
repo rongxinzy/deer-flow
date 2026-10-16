@@ -8,7 +8,7 @@ export type RetrievalCatalogItem = {
   selectable: boolean;
 };
 
-export type RetrievalCatalogPage = {
+type RetrievalCatalogPage = {
   items: RetrievalCatalogItem[];
   page: number;
   page_size: number;

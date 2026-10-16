@@ -74,7 +74,7 @@ const TERMINAL_RUN_STATUSES = new Set([
 // five recovery attempts can consume six streams in total.
 const MAX_STREAM_GAP_RECOVERIES = 5;
 
-export type StreamReplayGapData = {
+type StreamReplayGapData = {
   code: "stream_replay_gap";
   run_id: string;
   requested_event_id: string | null;

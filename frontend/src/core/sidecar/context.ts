@@ -17,7 +17,7 @@ export type ReferencedMessageSidecarContext = {
 
 export type SidecarContext = ReferencedMessageSidecarContext;
 
-export type ParentConversationContextMessage = {
+type ParentConversationContextMessage = {
   messageId?: string;
   role: SidecarContextRole;
   content: string;

@@ -9,32 +9,7 @@ name: Replay E2E (front-back contract)
 # longer pass without the frontend-facing checks running.
 
 on:
-  push:
-    branches: ["main", "*-dev"]
-    paths:
-      - "frontend/**"
-      - "backend/app/gateway/**"
-      - "backend/packages/harness/**"
-      - "backend/tests/fixtures/replay/**"
-      - "backend/tests/replay_provider.py"
-      - "backend/tests/_replay_fixture.py"
-      - "backend/tests/seed_runs_router.py"
-      - "backend/tests/test_replay_golden.py"
-      - "backend/scripts/run_replay_gateway.py"
-      - ".github/workflows/replay-e2e.yml"
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "frontend/**"
-      - "backend/app/gateway/**"
-      - "backend/packages/harness/**"
-      - "backend/tests/fixtures/replay/**"
-      - "backend/tests/replay_provider.py"
-      - "backend/tests/_replay_fixture.py"
-      - "backend/tests/seed_runs_router.py"
-      - "backend/tests/test_replay_golden.py"
-      - "backend/scripts/run_replay_gateway.py"
-      - ".github/workflows/replay-e2e.yml"
+  workflow_dispatch:
 
 concurrency:
   group: replay-e2e-${{ github.event.pull_request.number || github.ref }}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { cn } from "@/lib/utils";
 
-export type FooterProps = {
+type FooterProps = {
   className?: string;
 };
 

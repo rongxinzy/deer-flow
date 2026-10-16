@@ -19,7 +19,7 @@ function readJSON(read: () => string | null): Preferences {
   }
 }
 
-export function preferencesFromSettings(settings: LocalSettings): Preferences {
+function preferencesFromSettings(settings: LocalSettings): Preferences {
   return {
     notification_enabled: settings.notification.enabled,
     model_name: settings.context.model_name ?? null,
