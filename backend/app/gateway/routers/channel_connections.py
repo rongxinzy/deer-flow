@@ -19,7 +19,7 @@ from app.channels.runtime_config_store import (
     merge_runtime_channel_configs,
 )
 from app.channels.wechat_qr_login import QRLoginError, WechatQRLogin
-from app.gateway.deps import require_admin_user
+from app.gateway.channel_admin import require_channel_admin
 from deerflow.config.channel_connections_config import ChannelConnectionsConfig
 from deerflow.persistence.channel_connections import ChannelConnectionRepository
 from deerflow.persistence.engine import get_session_factory
@@ -585,7 +585,7 @@ async def disconnect_channel_connection(connection_id: str, request: Request) ->
 
 @router.delete("/{provider}/runtime-config", response_model=ChannelProviderResponse)
 async def disconnect_channel_provider_runtime(provider: str, request: Request) -> ChannelProviderResponse:
-    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    await require_channel_admin(request, detail=_ADMIN_REQUIRED_DETAIL)
     if provider == "wechat":
         async with _get_wechat_qr_login(request).mutation():
             return await _disconnect_channel_provider_runtime(provider, request)
@@ -678,7 +678,7 @@ async def configure_channel_provider_runtime(
     body: ChannelRuntimeConfigRequest,
     request: Request,
 ) -> ChannelProviderResponse:
-    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    await require_channel_admin(request, detail=_ADMIN_REQUIRED_DETAIL)
     if provider == "wechat":
         async with _get_wechat_qr_login(request).mutation():
             return await _configure_channel_provider_runtime(provider, body, request)
@@ -768,7 +768,7 @@ def _get_wechat_qr_login(request: Request) -> WechatQRLogin:
 
 
 async def _require_wechat_qr_login(request: Request) -> ChannelConnectionsConfig:
-    await require_admin_user(request, detail=_ADMIN_REQUIRED_DETAIL)
+    await require_channel_admin(request, detail=_ADMIN_REQUIRED_DETAIL)
     config = await _get_channel_connections_config(request)
     if not config.enabled or not config.wechat.enabled:
         raise HTTPException(status_code=400, detail="WeChat channel connections are disabled")
