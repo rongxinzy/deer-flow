@@ -1,17 +1,26 @@
 import asyncio
 import json
 import threading
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 from urllib.parse import quote
 
 import pytest
 from _router_auth_helpers import call_unwrapped, make_authed_test_app
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.types import ASGIApp, Receive, Scope, Send
+from test_openviking_memory_backend import _manager as _openviking_manager
+from test_openviking_memory_backend import official_integration as official_integration
 
+from app.gateway.internal_auth import INTERNAL_OWNER_USER_ID_HEADER_NAME, INTERNAL_SYSTEM_ROLE
 from app.gateway.routers import memory
-from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError
+from deerflow.agents.memory import MemoryConflictError, MemoryCorruptionError, MemoryManagerError, MemoryReadError
 from deerflow.agents.memory.backends.deermem.deer_mem import DeerMem
+from deerflow.agents.memory.backends.openviking.openviking_manager import OpenVikingMemoryManager, RequesterScopeError
+from deerflow.runtime.user_context import DEFAULT_USER_ID, reset_requester_id, set_requester_id
 
 
 @pytest.mark.parametrize("method,path", [("delete", "/api/memory"), ("delete", "/api/memory/facts/fact")])
@@ -630,3 +639,244 @@ def test_import_blank_fact_returns_400_without_replacing_saved_memory(tmp_path):
         response = client.post("/api/memory/import", json=payload)
     assert response.status_code == 400
     assert manager.get_memory(user_id="alice") == before
+
+
+# ── trusted requester (HTTP path) ───────────────────────────────────────────
+# The requester is the user a request acts on behalf of. It is NOT the storage
+# owner the router resolves for the bucket (`_resolve_memory_user_id`), and it
+# is never taken from the request. The only trusted carrier is the task-local
+# value the governance middleware publishes once its identity chain resolves
+# (`set_requester_id`, gov#63); memory's run-time paths read the same value
+# through `requester_from_runtime`. These tests drive the HTTP endpoints with
+# the production OpenViking manager (real scope resolution, fake OpenViking
+# client) so "the requester reaches the backend on the HTTP path" is asserted
+# end-to-end rather than at the manager boundary.
+
+_REFUSED_DETAIL = "Memory operation refused for this requester."
+_ALICE_FACT = "viking://~/peers/alice/memories/fact.md"
+_BOB_FACT = "viking://~/peers/bob/memories/fact.md"
+
+
+class _PublishRequester:
+    """Publish a trusted requester for the request task.
+
+    Stands in for the governance middleware, whose only role here is to call
+    ``set_requester_id`` inside the request task before the endpoint reads it.
+    ``None`` models "the identity chain could not be resolved", which must stay
+    distinguishable from a resolved id.
+    """
+
+    def __init__(self, app: ASGIApp, requester: str | None = None) -> None:
+        self.app = app
+        self.requester = requester
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        token = set_requester_id(self.requester)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            reset_requester_id(token)
+
+
+class _RequesterScopedRecorder:
+    """Manager stub that declares requester scope and records every call."""
+
+    supports_requester_scope = True
+
+    def __init__(self) -> None:
+        self.calls: dict[str, dict[str, Any]] = {}
+
+    def _record(self, name: str, kwargs: dict[str, Any]) -> dict:
+        self.calls[name] = kwargs
+        return _sample_memory()
+
+    def get_memory(self, **kwargs: Any) -> dict:
+        return self._record("get_memory", kwargs)
+
+    def reload_memory(self, **kwargs: Any) -> dict:
+        return self._record("reload_memory", kwargs)
+
+    def clear_memory(self, **kwargs: Any) -> dict:
+        return self._record("clear_memory", kwargs)
+
+    def create_fact(self, content: str, category: str, confidence: float, **kwargs: Any) -> tuple[dict, str]:
+        return self._record("create_fact", kwargs), "fact_new"
+
+    def delete_fact(self, fact_id: str, **kwargs: Any) -> dict:
+        return self._record("delete_fact", kwargs)
+
+    def update_fact(self, fact_id: str, content: str | None, category: str | None, confidence: float | None, **kwargs: Any) -> dict:
+        return self._record("update_fact", kwargs)
+
+    def import_memory(self, data: dict, **kwargs: Any) -> dict:
+        return self._record("import_memory", kwargs)
+
+
+def _requester_app(*, requester: str | None, owner: str = "alice") -> FastAPI:
+    """An internal caller's app: owner bucket *owner*, requester *requester*."""
+    app = make_authed_test_app(user_factory=lambda: SimpleNamespace(id=DEFAULT_USER_ID, system_role=INTERNAL_SYSTEM_ROLE))
+    app.add_middleware(_PublishRequester, requester=requester)
+    app.include_router(memory.router)
+    return app
+
+
+def _owner_headers(owner: str = "alice") -> dict[str, str]:
+    return {INTERNAL_OWNER_USER_ID_HEADER_NAME: owner}
+
+
+def _fact_ids_over_http(manager: object, *, requester: str | None, path: str = "/api/memory") -> list[str]:
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=manager):
+        with TestClient(_requester_app(requester=requester)) as client:
+            response = client.get(path, headers=_owner_headers())
+    assert response.status_code == 200, response.text
+    return [fact["id"] for fact in response.json()["facts"]]
+
+
+@pytest.fixture
+def requester_scoped_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, official_integration: None) -> OpenVikingMemoryManager:
+    """The production OpenViking manager in requester scope, over a fake client."""
+    manager = _openviking_manager(tmp_path, monkeypatch, memory_scope="requester")
+    manager._client.files = {_ALICE_FACT: "alice prefers concise reviews", _BOB_FACT: "bob prefers verbose reviews"}
+    return manager
+
+
+def test_requester_scoped_reads_partition_by_requester_not_owner(requester_scoped_manager: OpenVikingMemoryManager) -> None:
+    """Two requesters on one owner bucket see only their own memory."""
+    assert _fact_ids_over_http(requester_scoped_manager, requester="alice") == [_ALICE_FACT]
+    assert _fact_ids_over_http(requester_scoped_manager, requester="bob") == [_BOB_FACT]
+    assert _fact_ids_over_http(requester_scoped_manager, requester="alice", path="/api/memory/export") == [_ALICE_FACT]
+
+
+def test_requester_scoped_clear_and_delete_stay_inside_the_requesters_bucket(requester_scoped_manager: OpenVikingMemoryManager) -> None:
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=requester_scoped_manager):
+        with TestClient(_requester_app(requester="alice")) as client:
+            foreign = client.delete("/api/memory/facts/" + quote(_BOB_FACT, safe=""), headers=_owner_headers())
+            own = client.delete("/api/memory/facts/" + quote(_ALICE_FACT, safe=""), headers=_owner_headers())
+            cleared = client.delete("/api/memory", headers=_owner_headers())
+    assert foreign.status_code == 403
+    assert foreign.json()["detail"] == _REFUSED_DETAIL
+    assert own.status_code == 200
+    assert cleared.status_code == 200
+    # Bob's file was never touched; alice's own root is the only thing cleared.
+    assert requester_scoped_manager._client.removals == [(_ALICE_FACT, False), ("viking://~/peers/alice/memories", True)]
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("get", "/api/memory"),
+        ("get", "/api/memory/export"),
+        ("get", "/api/memory/status"),
+        ("post", "/api/memory/reload"),
+        ("delete", "/api/memory"),
+        ("delete", "/api/memory/facts/" + quote(_ALICE_FACT, safe="")),
+    ],
+)
+def test_requester_scoped_endpoints_refuse_without_a_trusted_requester(requester_scoped_manager: OpenVikingMemoryManager, method: str, path: str) -> None:
+    """Requester-scoped memory fails closed instead of serving the owner bucket."""
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=requester_scoped_manager):
+        with TestClient(_requester_app(requester=None)) as client:
+            response = client.request(method, path, headers=_owner_headers())
+    assert response.status_code == 403, response.text
+    assert response.json()["detail"] == _REFUSED_DETAIL
+    # Refused before the store was touched at all.
+    assert requester_scoped_manager._client.reads == []
+    assert requester_scoped_manager._client.removals == []
+
+
+def test_instance_scoped_memory_is_unchanged_without_a_requester(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, official_integration: None) -> None:
+    """Instance scope ignores the requester and still serves the owner bucket."""
+    manager = _openviking_manager(tmp_path, monkeypatch, memory_scope="instance")
+    manager._client.files = {"viking://~/memories/summary.md": "alice summary", "viking://~/peers/research/memories/fact.md": "research fact"}
+    assert _fact_ids_over_http(manager, requester=None) == ["viking://~/memories/summary.md", "viking://~/peers/research/memories/fact.md"]
+
+
+def test_owner_and_request_supplied_ids_are_never_the_requester(requester_scoped_manager: OpenVikingMemoryManager) -> None:
+    """The owner id and any request-supplied id must not stand in for it."""
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=requester_scoped_manager):
+        with TestClient(_requester_app(requester=None)) as client:
+            response = client.get(
+                "/api/memory",
+                params={"requester_id": "alice"},
+                headers={**_owner_headers("alice"), "X-DeerFlow-Requester-Id": "alice"},
+            )
+    assert response.status_code == 403
+    assert requester_scoped_manager._client.reads == []
+
+
+def test_trusted_requester_reaches_every_memory_operation() -> None:
+    """Each memory operation carries the same owner + trusted requester pair."""
+    recorder = _RequesterScopedRecorder()
+    requests = [
+        ("get", "/api/memory", {}),
+        ("get", "/api/memory/export", {}),
+        ("get", "/api/memory/status", {}),
+        ("post", "/api/memory/reload", {}),
+        ("delete", "/api/memory", {}),
+        ("post", "/api/memory/facts", {"json": {"content": "fact"}}),
+        ("delete", "/api/memory/facts/fact", {}),
+        ("patch", "/api/memory/facts/fact", {"json": {"content": "fact"}}),
+        ("post", "/api/memory/import", {"json": _sample_memory()}),
+    ]
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=recorder):
+        with TestClient(_requester_app(requester="alice")) as client:
+            for method, path, kwargs in requests:
+                response = client.request(method, path, headers=_owner_headers(), **kwargs)
+                assert response.status_code == 200, f"{method} {path}: {response.text}"
+    assert set(recorder.calls) == {"get_memory", "reload_memory", "clear_memory", "create_fact", "delete_fact", "update_fact", "import_memory"}
+    assert all(kwargs == {"user_id": "alice", "requester_id": "alice"} for kwargs in recorder.calls.values()), recorder.calls
+
+
+def test_backends_without_requester_scope_keep_their_call_contract() -> None:
+    """A single-scope backend is called exactly as before (no requester kwarg)."""
+    manager = MagicMock()
+    manager.get_memory.return_value = _sample_memory()
+    with patch("app.gateway.routers.memory.get_memory_manager", return_value=manager):
+        with TestClient(_requester_app(requester="alice")) as client:
+            response = client.get("/api/memory", headers=_owner_headers())
+    assert response.status_code == 200
+    assert manager.get_memory.call_args.kwargs == {"user_id": "alice"}
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [
+        (MemoryConflictError("stale write"), 409),
+        (MemoryCorruptionError("corrupt payload"), 500),
+        (MemoryReadError("backend read failed"), 502),
+        (MemoryManagerError("refused"), 403),
+        (RequesterScopeError("requires an authenticated requester"), 403),
+    ],
+)
+@pytest.mark.parametrize(
+    ("method", "path", "manager_method", "kwargs"),
+    [
+        ("get", "/api/memory", "get_memory", {}),
+        ("get", "/api/memory/export", "get_memory", {}),
+        ("get", "/api/memory/status", "get_memory", {}),
+        ("delete", "/api/memory", "clear_memory", {}),
+        ("delete", "/api/memory/facts/fact", "delete_fact", {}),
+        ("post", "/api/memory/facts", "create_fact", {"json": {"content": "fact"}}),
+        ("patch", "/api/memory/facts/fact", "update_fact", {"json": {"content": "fact"}}),
+        ("post", "/api/memory/import", "import_memory", {"json": _sample_memory()}),
+    ],
+)
+def test_memory_manager_error_family_maps_to_stable_statuses(method: str, path: str, manager_method: str, kwargs: dict, error: Exception, status: int) -> None:
+    """The manager error family has one deterministic HTTP status per case."""
+    expected_details = {
+        409: "Memory changed concurrently; reload and retry.",
+        500: "Stored memory data is corrupted.",
+        502: "Memory backend read failed.",
+        403: _REFUSED_DETAIL,
+    }
+    manager = MagicMock()
+    getattr(manager, manager_method).side_effect = error
+    cfg = SimpleNamespace(enabled=True, mode="middleware", injection_enabled=True, shutdown_flush_timeout_seconds=30.0, manager_class="stub", backend_config={})
+    with (
+        patch("app.gateway.routers.memory.get_memory_manager", return_value=manager),
+        patch("app.gateway.routers.memory.get_memory_config", return_value=cfg),
+    ):
+        with TestClient(_requester_app(requester="alice")) as client:
+            response = client.request(method, path, headers=_owner_headers(), **kwargs)
+    assert response.status_code == status, response.text
+    assert response.json()["detail"] == expected_details[status]

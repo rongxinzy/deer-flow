@@ -1,6 +1,8 @@
 """Memory API router for retrieving and managing global memory data."""
 
 import asyncio
+import inspect
+from collections.abc import Callable
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -13,11 +15,13 @@ from deerflow.agents.memory import (
     MemoryCorruptionError,
     MemoryManager,
     MemoryManagerError,
+    MemoryReadError,
     get_memory_manager,
 )
+from deerflow.agents.memory.manager import requester_kwargs
 from deerflow.config.memory_config import get_memory_config
 from deerflow.config.paths import make_safe_user_id
-from deerflow.runtime.user_context import get_effective_user_id
+from deerflow.runtime.user_context import get_effective_user_id, get_requester_id
 
 router = APIRouter(prefix="/api", tags=["memory"])
 
@@ -42,6 +46,58 @@ def _resolve_memory_user_id(request: Request) -> str:
     if raw_owner:
         return make_safe_user_id(raw_owner)
     return get_effective_user_id()
+
+
+def _resolve_memory_requester() -> str | None:
+    """Resolve the trusted requester this request acts on behalf of.
+
+    The requester is *not* the storage owner returned by
+    :func:`_resolve_memory_user_id`: for IM traffic that owner is the bound
+    connection owner (the instance's identity), while the requester is the
+    human the turn belongs to. It is also never taken from the request —
+    a client-submitted id is unauthenticated and forgeable.
+
+    The only trusted carrier is the task-local value the governance middleware
+    publishes once its identity chain resolves (``set_requester_id``, see gov
+    "fail closed and publish the trusted requester"); memory's run-time paths
+    read the same value through ``requester_from_runtime``. ``None`` means
+    "not resolved" and is passed through unchanged — a requester-scoped
+    backend then refuses the call, so an unresolved request never falls back
+    to the owner's bucket.
+    """
+    return get_requester_id()
+
+
+def _accepts_requester_id(method: Callable[..., Any]) -> bool:
+    """Whether *method* can take the optional ``requester_id`` keyword.
+
+    Mirrors ``deerflow.agents.memory.manager.context_query_kwargs``: an
+    uninspectable callable keeps the old call contract, and a backend that just
+    forwards ``**kwargs`` counts as accepting it.
+    """
+    try:
+        parameters = inspect.signature(method).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD or (parameter.name == "requester_id" and parameter.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)) for parameter in parameters)
+
+
+def _memory_identity(request: Request, manager: MemoryManager, method_name: str) -> dict[str, Any]:
+    """Identity kwargs for one memory manager call.
+
+    ``user_id`` is the storage owner the data bucket belongs to. The trusted
+    requester rides alongside it only where it can be honored: the backend must
+    declare ``supports_requester_scope`` (``requester_kwargs``), and the called
+    method must accept the keyword — the base contract adds ``requester_id`` to
+    the identity-carrying run-time methods, a requester-partitioning backend
+    widens its own management methods, and a method an unsupported backend
+    inherits straight from the base keeps its ``user_id``-only signature.
+    """
+    identity: dict[str, Any] = {"user_id": _resolve_memory_user_id(request)}
+    requester = requester_kwargs(manager, _resolve_memory_requester())
+    if requester and _accepts_requester_id(getattr(manager, method_name)):
+        identity.update(requester)
+    return identity
 
 
 class ContextSection(BaseModel):
@@ -134,11 +190,25 @@ def _map_memory_fact_value_error(exc: ValueError) -> HTTPException:
     return HTTPException(status_code=400, detail=detail)
 
 
-def _map_memory_manager_error(exc: MemoryConflictError | MemoryCorruptionError) -> HTTPException:
-    """Map backend-neutral manager errors without importing a storage plugin."""
+def _map_memory_manager_error(exc: MemoryManagerError) -> HTTPException:
+    """Map the backend-neutral manager error family onto stable responses.
+
+    Ordered most-specific first; the manager's own error types are the only
+    signal used (no storage-plugin import). Conflicts and corrupted storage
+    keep their deterministic mapping, a failed backend read is an upstream
+    failure (502), and everything else the manager raises is a refusal to act
+    for this request's identity or scope — an unresolved requester in
+    requester-scoped memory, a credential bound to another owner, or a memory
+    URI outside the actor's scope — which is 403, never a silent fallback to
+    the storage owner's bucket.
+    """
     if isinstance(exc, MemoryConflictError):
         return HTTPException(status_code=409, detail="Memory changed concurrently; reload and retry.")
-    return HTTPException(status_code=500, detail="Stored memory data is corrupted.")
+    if isinstance(exc, MemoryCorruptionError):
+        return HTTPException(status_code=500, detail="Stored memory data is corrupted.")
+    if isinstance(exc, MemoryReadError):
+        return HTTPException(status_code=502, detail="Memory backend read failed.")
+    return HTTPException(status_code=403, detail="Memory operation refused for this requester.")
 
 
 def _unsupported_501(manager: object, label: str) -> HTTPException:
@@ -160,7 +230,7 @@ def _unsupported_501(manager: object, label: str) -> HTTPException:
     )
 
 
-async def _get_memory_or_501(manager: MemoryManager, user_id: str, label: str) -> dict[str, Any]:
+async def _get_memory_or_501(manager: MemoryManager, identity: dict[str, Any], label: str) -> dict[str, Any]:
     """Read the full memory doc; 501 if the backend doesn't expose one.
 
     ``get_memory`` is tier-2 (default ``raise NotImplementedError``); a minimal
@@ -169,12 +239,14 @@ async def _get_memory_or_501(manager: MemoryManager, user_id: str, label: str) -
     route reads through here so an unsupported backend gets a clean 501 instead
     of a raw 500. ``label`` is the operation name in the 501 detail (the
     endpoint's verb, e.g. "get memory" / "export memory" / "reload memory").
+    ``identity`` is the ``user_id`` + trusted-requester pair from
+    :func:`_memory_identity`.
     """
     try:
-        return await asyncio.to_thread(manager.get_memory, user_id=user_id)
+        return await asyncio.to_thread(manager.get_memory, **identity)
     except NotImplementedError:
         raise _unsupported_501(manager, label) from None
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
+    except MemoryManagerError as exc:
         raise _map_memory_manager_error(exc) from exc
 
 
@@ -255,7 +327,7 @@ async def get_memory(request: Request) -> MemoryResponse:
         ```
     """
     manager = await asyncio.to_thread(get_memory_manager)
-    memory_data = await _get_memory_or_501(manager, _resolve_memory_user_id(request), "get memory")
+    memory_data = await _get_memory_or_501(manager, _memory_identity(request, manager, "get_memory"), "get memory")
     return MemoryResponse(**memory_data)
 
 
@@ -276,10 +348,10 @@ async def reload_memory(request: Request) -> MemoryResponse:
     Returns:
         The reloaded memory data.
     """
-    user_id = _resolve_memory_user_id(request)
     manager = await asyncio.to_thread(get_memory_manager)
+    identity = _memory_identity(request, manager, "reload_memory")
     try:
-        memory_data = await asyncio.to_thread(manager.reload_memory, user_id=user_id)
+        memory_data = await asyncio.to_thread(manager.reload_memory, **identity)
     except NotImplementedError:
         # Non-DeerMem backends have no reload concept; fall back to get_memory
         # (read-only refresh, so degrading is safe and still useful -- vs fact
@@ -287,8 +359,8 @@ async def reload_memory(request: Request) -> MemoryResponse:
         # would hide data loss). If get_memory is also unsupported (a minimal
         # backend with no full doc), surface 501 rather than a raw 500: reads
         # degrade only when there is a doc to degrade to.
-        memory_data = await _get_memory_or_501(manager, user_id, "reload memory")
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
+        memory_data = await _get_memory_or_501(manager, identity, "reload memory")
+    except MemoryManagerError as exc:
         raise _map_memory_manager_error(exc) from exc
     return MemoryResponse(**memory_data)
 
@@ -305,13 +377,11 @@ async def clear_memory(request: Request) -> MemoryResponse:
     """Clear all persisted memory data."""
     manager = await asyncio.to_thread(get_memory_manager)
     try:
-        memory_data = await asyncio.to_thread(manager.clear_memory, user_id=_resolve_memory_user_id(request))
+        memory_data = await asyncio.to_thread(manager.clear_memory, **_memory_identity(request, manager, "clear_memory"))
     except NotImplementedError:
         raise _unsupported_501(manager, "clear memory") from None
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
-        raise _map_memory_manager_error(exc) from exc
     except MemoryManagerError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _map_memory_manager_error(exc) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to clear memory data.") from exc
 
@@ -335,13 +405,13 @@ async def create_memory_fact_endpoint(body: FactCreateRequest, request: Request)
             content=body.content,
             category=body.category,
             confidence=body.confidence,
-            user_id=_resolve_memory_user_id(request),
+            **_memory_identity(request, manager, "create_fact"),
         )
     except NotImplementedError:
         raise _unsupported_501(manager, "create fact") from None
     except ValueError as exc:
         raise _map_memory_fact_value_error(exc) from exc
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
+    except MemoryManagerError as exc:
         raise _map_memory_manager_error(exc) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to create memory fact.") from exc
@@ -368,15 +438,13 @@ async def delete_memory_fact_endpoint(fact_id: str, request: Request) -> MemoryR
     """
     manager = await asyncio.to_thread(get_memory_manager)
     try:
-        memory_data = await asyncio.to_thread(manager.delete_fact, fact_id, user_id=_resolve_memory_user_id(request))
+        memory_data = await asyncio.to_thread(manager.delete_fact, fact_id, **_memory_identity(request, manager, "delete_fact"))
     except NotImplementedError:
         raise _unsupported_501(manager, "delete fact") from None
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
-        raise _map_memory_manager_error(exc) from exc
     except MemoryManagerError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _map_memory_manager_error(exc) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to delete memory fact.") from exc
 
@@ -401,7 +469,7 @@ async def update_memory_fact_endpoint(fact_id: str, body: FactPatchRequest, requ
             content=body.content,
             category=body.category,
             confidence=body.confidence,
-            user_id=_resolve_memory_user_id(request),
+            **_memory_identity(request, manager, "update_fact"),
         )
     except NotImplementedError:
         raise _unsupported_501(manager, "update fact") from None
@@ -409,7 +477,7 @@ async def update_memory_fact_endpoint(fact_id: str, body: FactPatchRequest, requ
         raise _map_memory_fact_value_error(exc) from exc
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Memory fact '{fact_id}' not found.") from exc
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
+    except MemoryManagerError as exc:
         raise _map_memory_manager_error(exc) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail="Failed to update memory fact.") from exc
@@ -428,7 +496,7 @@ async def update_memory_fact_endpoint(fact_id: str, body: FactPatchRequest, requ
 async def export_memory(request: Request) -> MemoryResponse:
     """Export the current memory data."""
     manager = await asyncio.to_thread(get_memory_manager)
-    memory_data = await _get_memory_or_501(manager, _resolve_memory_user_id(request), "export memory")
+    memory_data = await _get_memory_or_501(manager, _memory_identity(request, manager, "get_memory"), "export memory")
     return MemoryResponse(**memory_data)
 
 
@@ -447,11 +515,11 @@ async def import_memory(body: MemoryResponse, request: Request) -> MemoryRespons
         memory_data = await asyncio.to_thread(
             manager.import_memory,
             body.model_dump(exclude_none=True),
-            user_id=_resolve_memory_user_id(request),
+            **_memory_identity(request, manager, "import_memory"),
         )
     except NotImplementedError:
         raise _unsupported_501(manager, "import memory") from None
-    except (MemoryConflictError, MemoryCorruptionError) as exc:
+    except MemoryManagerError as exc:
         raise _map_memory_manager_error(exc) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid memory import: facts must be a list of objects with non-empty content.") from exc
@@ -527,7 +595,7 @@ async def get_memory_status(request: Request) -> MemoryStatusResponse:
     """
     config = get_memory_config()
     manager = await asyncio.to_thread(get_memory_manager)
-    memory_data = await _get_memory_or_501(manager, _resolve_memory_user_id(request), "get memory status")
+    memory_data = await _get_memory_or_501(manager, _memory_identity(request, manager, "get_memory"), "get memory status")
 
     return MemoryStatusResponse(
         config=MemoryConfigResponse(
