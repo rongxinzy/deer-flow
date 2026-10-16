@@ -18,6 +18,11 @@ scoped enumeration before deletion. Reject traversal and encoded URI variants.
 Enumeration/read failures propagate, and Gateway conflict/corruption mappings
 must precede the generic memory-manager error handler.
 
+When deletion propagation checks a recalled entry's directory, listing failure
+must not expose unchecked index text. Fail-open recall omits affected entries
+for that read; strict read policy raises `MemoryReadError`. Neither path deletes
+the stored memory, and later reads retry verification.
+
 #### Main components
 
 - `manager.py` defines the backend-neutral `MemoryManager` contract.

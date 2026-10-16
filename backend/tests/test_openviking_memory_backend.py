@@ -1451,17 +1451,37 @@ def test_search_drops_recalled_entries_whose_file_is_gone(
     assert manager.search("answer style", top_k=3, user_id="alice", agent_name="research") == []
 
 
-def test_recall_keeps_an_entry_it_cannot_verify(
+@pytest.mark.parametrize("read_policy", ["fail_open", "raise"])
+@pytest.mark.parametrize("operation", ["context", "search"])
+def test_recall_does_not_expose_an_entry_when_existence_verification_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     official_integration: None,
+    read_policy: str,
+    operation: str,
 ) -> None:
-    manager = _manager(tmp_path, monkeypatch)
+    manager = _manager(tmp_path, monkeypatch, failure_policy={"read": read_policy})
     monkeypatch.setattr(_Retriever, "invoke", _return_documents(_document(_STALE_URI)))
     manager._client.glob_error = RuntimeError("listing unavailable")
 
-    # A failed listing must never silently discard memory.
-    assert manager.get_context("alice", agent_name="research") == ("- [preferences] Prefers concise answers.")
+    def recall():
+        if operation == "context":
+            return manager.get_context("alice", agent_name="research")
+        return manager.search("answer style", user_id="alice", agent_name="research")
+
+    # fail_open means continue without unverified content, not reuse stale
+    # index text whose backing file may already have been deleted.
+    if read_policy == "raise":
+        with pytest.raises(MemoryReadError, match="verification"):
+            recall()
+    else:
+        assert recall() == ("" if operation == "context" else [])
+
+    # Skipping a recall does not erase memory: a later verified read recovers.
+    manager._client.glob_error = None
+    manager._client.files[_STALE_ROOT_URI] = "Prefers concise answers."
+    assert recall()
+    assert manager._client.removals == []
 
 
 def test_recall_keeps_an_entry_without_a_uri(

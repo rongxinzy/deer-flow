@@ -1017,11 +1017,12 @@ class OpenVikingMemoryManager(MemoryManager):
         content, which is exactly what "deleted memory must not be recalled"
         forbids.
 
-        The filesystem is the authority for existence, so each entry is checked
-        against a listing of its own directory. An entry is dropped only when it
-        is definitively absent from a directory this scope actually reads;
-        anything unverifiable (a URI outside the scope roots, a failed listing)
-        is kept, so a transient error never silently discards memory.
+        The filesystem is the authority for existence, so entries with a URI
+        inside this scope are checked against their directory listing. Missing
+        entries are dropped; a failed listing never permits unchecked text through. In
+        fail-open mode the affected entries are omitted for this read only;
+        strict read policy raises instead. Neither path deletes stored memory.
+        Entries without a recognized in-scope URI retain legacy behavior.
         """
 
         if not documents or not self._config.drop_deleted_entries:
@@ -1047,13 +1048,13 @@ class OpenVikingMemoryManager(MemoryManager):
         keep = [True] * len(documents)
         for index, parent, name in targets:
             names = listed[parent]
-            if names is not None and name not in names:
+            if names is None or name not in names:
                 keep[index] = False
         dropped = keep.count(False)
         if not dropped:
             return documents
         logger.info(
-            "Dropped %d recalled OpenViking entries with no backing file; %d kept",
+            "Omitted %d recalled OpenViking entries without a verified backing file; %d kept",
             dropped,
             len(documents) - dropped,
         )
@@ -1064,9 +1065,11 @@ class OpenVikingMemoryManager(MemoryManager):
 
         try:
             result = self._call_openviking(self._client, "ls", uri=parent, simple=True)
-        except Exception:
+        except Exception as exc:
+            if self._config.read_failure_policy == "raise":
+                raise MemoryReadError("OpenViking memory existence verification failed") from exc
             logger.warning(
-                "Could not list OpenViking memory directory %s; keeping recalled entries unverified",
+                "Could not list OpenViking memory directory %s; omitting unverified recalled entries",
                 parent,
                 exc_info=True,
             )

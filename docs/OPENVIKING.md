@@ -207,9 +207,12 @@ delete that raced a pending index task, or an orphan that a rebuild keeps
 With `retrieval.drop_deleted_entries: true` (the default), recalled entries are
 checked against the store before they reach the model, and entries whose file is
 gone are dropped. The check costs one listing per directory a recall touches.
-An entry is only dropped when it is definitively absent from a directory this
-scope reads; a URI outside the scope roots, an entry without a URI, or a failed
-listing keeps the entry, so a transient error never silently discards memory.
+Entries in a scope directory are omitted when absent or when the directory cannot
+be verified. With `read: fail_open`, the turn continues without those entries;
+with `read: raise`, a failed listing raises a read error. This never removes
+stored data, and subsequent recalls retry verification. A URI outside the scope
+roots or an entry without a URI still bypasses this check; this existence filter
+does not replace source authorization or provide deletion of derived summaries.
 Set `drop_deleted_entries: false` to skip the check entirely.
 
 ## Retry and failure behavior
