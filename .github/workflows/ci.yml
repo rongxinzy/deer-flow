@@ -304,6 +304,7 @@ jobs:
         run: |
           uv sync --group dev
           uv run pytest --collect-only -q
+          uv sync --group dev --extra postgres
 
       - name: Run backend unit tests (shard ${{ matrix.shard }}/4)
         working-directory: backend
