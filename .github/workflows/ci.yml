@@ -1,6 +1,6 @@
 name: CI
 
-# Single PR/push entry: fast path filters, lockfile-keyed caches, one required aggregate job (`ci`).
+# Single PR/push entry: fast path filters, lockfile-keyed caches, one required aggregate job (`ci-gate`).
 
 on:
   push:
@@ -531,8 +531,8 @@ jobs:
             --before "${{ github.event.before }}" \
             --after "${{ github.event.after }}"
 
-  ci:
-    name: ci
+  ci-gate:
+    name: ci-gate
     runs-on: ubuntu-latest
     needs:
       - changes
