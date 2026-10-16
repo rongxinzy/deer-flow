@@ -4,7 +4,7 @@ import { normalizeSidecarContexts, type SidecarContext } from "./context";
 
 export const SIDECAR_METADATA_KEY = "deerflow_sidecar";
 
-export type SidecarThreadMetadata = {
+type SidecarThreadMetadata = {
   [SIDECAR_METADATA_KEY]: true;
   parent_thread_id: string;
   sidecar_context_type: SidecarContext["type"];

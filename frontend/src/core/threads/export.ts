@@ -23,7 +23,7 @@ import { titleOfThread } from "./utils";
  * forking the formatter. They are not currently wired to any UI control —
  * callers that want them must construct the options object explicitly.
  */
-export interface ExportOptions {
+interface ExportOptions {
   includeReasoning?: boolean;
   includeToolCalls?: boolean;
   includeToolMessages?: boolean;
@@ -195,7 +195,7 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^\p{L}\p{N}_\- ]/gu, "").trim() || "conversation";
 }
 
-export function downloadAsFile(
+function downloadAsFile(
   content: string,
   filename: string,
   mimeType: string,
@@ -211,7 +211,7 @@ export function downloadAsFile(
   URL.revokeObjectURL(url);
 }
 
-export function exportThreadAsMarkdown(
+function exportThreadAsMarkdown(
   thread: AgentThread,
   messages: Message[],
 ) {
@@ -220,7 +220,7 @@ export function exportThreadAsMarkdown(
   downloadAsFile(markdown, filename, "text/markdown;charset=utf-8");
 }
 
-export function exportThreadAsJSON(thread: AgentThread, messages: Message[]) {
+function exportThreadAsJSON(thread: AgentThread, messages: Message[]) {
   const json = formatThreadAsJSON(thread, messages);
   const filename = `${sanitizeFilename(titleOfThread(thread))}.json`;
   downloadAsFile(json, filename, "application/json;charset=utf-8");

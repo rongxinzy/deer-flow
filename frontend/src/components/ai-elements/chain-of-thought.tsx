@@ -42,7 +42,7 @@ const useChainOfThought = () => {
   return context;
 };
 
-export type ChainOfThoughtProps = ComponentProps<"div"> & {
+type ChainOfThoughtProps = ComponentProps<"div"> & {
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -78,13 +78,13 @@ export const ChainOfThought = memo(
   },
 );
 
-export type ChainOfThoughtHeaderProps = ComponentProps<
+type ChainOfThoughtHeaderProps = ComponentProps<
   typeof CollapsibleTrigger
 > & {
   icon?: React.ReactElement;
 };
 
-export const ChainOfThoughtHeader = memo(
+const ChainOfThoughtHeader = memo(
   ({ className, children, icon, ...props }: ChainOfThoughtHeaderProps) => {
     const { isOpen, setIsOpen } = useChainOfThought();
 
@@ -113,7 +113,7 @@ export const ChainOfThoughtHeader = memo(
   },
 );
 
-export type ChainOfThoughtStepProps = ComponentProps<"div"> & {
+type ChainOfThoughtStepProps = ComponentProps<"div"> & {
   icon?: LucideIcon | React.ReactElement;
   label: ReactNode;
   description?: ReactNode;
@@ -162,7 +162,7 @@ export const ChainOfThoughtStep = memo(
   },
 );
 
-export type ChainOfThoughtSearchResultsProps = ComponentProps<"div">;
+type ChainOfThoughtSearchResultsProps = ComponentProps<"div">;
 
 export const ChainOfThoughtSearchResults = memo(
   ({ className, ...props }: ChainOfThoughtSearchResultsProps) => (
@@ -176,7 +176,7 @@ export const ChainOfThoughtSearchResults = memo(
   ),
 );
 
-export type ChainOfThoughtSearchResultProps = ComponentProps<typeof Badge>;
+type ChainOfThoughtSearchResultProps = ComponentProps<typeof Badge>;
 
 export const ChainOfThoughtSearchResult = memo(
   ({ className, children, ...props }: ChainOfThoughtSearchResultProps) => (
@@ -190,7 +190,7 @@ export const ChainOfThoughtSearchResult = memo(
   ),
 );
 
-export type ChainOfThoughtContentProps = ComponentProps<
+type ChainOfThoughtContentProps = ComponentProps<
   typeof CollapsibleContent
 >;
 
@@ -215,11 +215,11 @@ export const ChainOfThoughtContent = memo(
   },
 );
 
-export type ChainOfThoughtImageProps = ComponentProps<"div"> & {
+type ChainOfThoughtImageProps = ComponentProps<"div"> & {
   caption?: string;
 };
 
-export const ChainOfThoughtImage = memo(
+const ChainOfThoughtImage = memo(
   ({ className, children, caption, ...props }: ChainOfThoughtImageProps) => (
     <div className={cn("mt-2 space-y-2", className)} {...props}>
       <div className="bg-muted relative flex max-h-[22rem] items-center justify-center overflow-hidden rounded-lg p-3">

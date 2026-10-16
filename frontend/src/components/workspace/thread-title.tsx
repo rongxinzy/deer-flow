@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { useThreadChat } from "./chats";
 import { FlipDisplay } from "./flip-display";
 
-export type ThreadTitleProps = {
+type ThreadTitleProps = {
   className?: string;
   threadId: string;
   thread: BaseStream<AgentThreadState>;

@@ -192,11 +192,10 @@ def test_mcp_task_lease_token_migration_is_documented() -> None:
 
 def test_repository_exposes_one_local_and_one_ci_entrypoint() -> None:
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
-    workflow = (REPO_ROOT / ".github" / "workflows" / "lint-check.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
     assert "check-agent-guidance:" in makefile
     assert "scripts/check_agent_guidance.py" in makefile
-    assert workflow.count("agent-guidance:") == 1
-    assert "fetch-depth: 0" in workflow
-    assert "--base-ref" in workflow
-    assert "--before" in workflow
+    assert "vulture" in workflow
+    assert "knip" in workflow
+    assert "name: ci" in workflow or "\n  ci:" in workflow

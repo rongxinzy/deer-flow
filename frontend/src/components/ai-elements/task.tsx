@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 import { ChevronDownIcon, SearchIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
-export type TaskItemFileProps = ComponentProps<"div">;
+type TaskItemFileProps = ComponentProps<"div">;
 
-export const TaskItemFile = ({
+const TaskItemFile = ({
   children,
   className,
   ...props
@@ -27,15 +27,15 @@ export const TaskItemFile = ({
   </div>
 );
 
-export type TaskItemProps = ComponentProps<"div">;
+type TaskItemProps = ComponentProps<"div">;
 
-export const TaskItem = ({ children, className, ...props }: TaskItemProps) => (
+const TaskItem = ({ children, className, ...props }: TaskItemProps) => (
   <div className={cn("text-muted-foreground text-sm", className)} {...props}>
     {children}
   </div>
 );
 
-export type TaskProps = ComponentProps<typeof Collapsible>;
+type TaskProps = ComponentProps<typeof Collapsible>;
 
 export const Task = ({
   defaultOpen = true,
@@ -45,7 +45,7 @@ export const Task = ({
   <Collapsible className={cn(className)} defaultOpen={defaultOpen} {...props} />
 );
 
-export type TaskTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
+type TaskTriggerProps = ComponentProps<typeof CollapsibleTrigger> & {
   title: string;
 };
 
@@ -66,9 +66,9 @@ export const TaskTrigger = ({
   </CollapsibleTrigger>
 );
 
-export type TaskContentProps = ComponentProps<typeof CollapsibleContent>;
+type TaskContentProps = ComponentProps<typeof CollapsibleContent>;
 
-export const TaskContent = ({
+const TaskContent = ({
   children,
   className,
   ...props

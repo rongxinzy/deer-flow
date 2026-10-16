@@ -21,7 +21,7 @@ import { createContext, memo, useContext, useEffect, useState } from "react";
 
 import { ClipboardSafeStreamdown } from "./streamdown";
 
-export type MessageProps = HTMLAttributes<HTMLDivElement> & {
+type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
 
@@ -36,7 +36,7 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
   />
 );
 
-export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
+type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 
 export const MessageContent = ({
   children,
@@ -57,9 +57,9 @@ export const MessageContent = ({
   </div>
 );
 
-export type MessageActionsProps = ComponentProps<"div">;
+type MessageActionsProps = ComponentProps<"div">;
 
-export const MessageActions = ({
+const MessageActions = ({
   className,
   children,
   ...props
@@ -69,12 +69,12 @@ export const MessageActions = ({
   </div>
 );
 
-export type MessageActionProps = ComponentProps<typeof Button> & {
+type MessageActionProps = ComponentProps<typeof Button> & {
   tooltip?: string;
   label?: string;
 };
 
-export const MessageAction = ({
+const MessageAction = ({
   tooltip,
   children,
   label,
@@ -130,12 +130,12 @@ const useMessageBranch = () => {
   return context;
 };
 
-export type MessageBranchProps = HTMLAttributes<HTMLDivElement> & {
+type MessageBranchProps = HTMLAttributes<HTMLDivElement> & {
   defaultBranch?: number;
   onBranchChange?: (branchIndex: number) => void;
 };
 
-export const MessageBranch = ({
+const MessageBranch = ({
   defaultBranch = 0,
   onBranchChange,
   className,
@@ -180,9 +180,9 @@ export const MessageBranch = ({
   );
 };
 
-export type MessageBranchContentProps = HTMLAttributes<HTMLDivElement>;
+type MessageBranchContentProps = HTMLAttributes<HTMLDivElement>;
 
-export const MessageBranchContent = ({
+const MessageBranchContent = ({
   children,
   ...props
 }: MessageBranchContentProps) => {
@@ -210,11 +210,11 @@ export const MessageBranchContent = ({
   ));
 };
 
-export type MessageBranchSelectorProps = HTMLAttributes<HTMLDivElement> & {
+type MessageBranchSelectorProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
 
-export const MessageBranchSelector = ({
+const MessageBranchSelector = ({
   className,
   from,
   ...props
@@ -235,9 +235,9 @@ export const MessageBranchSelector = ({
   );
 };
 
-export type MessageBranchPreviousProps = ComponentProps<typeof Button>;
+type MessageBranchPreviousProps = ComponentProps<typeof Button>;
 
-export const MessageBranchPrevious = ({
+const MessageBranchPrevious = ({
   children,
   ...props
 }: MessageBranchPreviousProps) => {
@@ -258,9 +258,9 @@ export const MessageBranchPrevious = ({
   );
 };
 
-export type MessageBranchNextProps = ComponentProps<typeof Button>;
+type MessageBranchNextProps = ComponentProps<typeof Button>;
 
-export const MessageBranchNext = ({
+const MessageBranchNext = ({
   children,
   className,
   ...props
@@ -282,9 +282,9 @@ export const MessageBranchNext = ({
   );
 };
 
-export type MessageBranchPageProps = HTMLAttributes<HTMLSpanElement>;
+type MessageBranchPageProps = HTMLAttributes<HTMLSpanElement>;
 
-export const MessageBranchPage = ({
+const MessageBranchPage = ({
   className,
   ...props
 }: MessageBranchPageProps) => {
@@ -303,11 +303,11 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<
+type MessageResponseProps = ComponentProps<
   typeof ClipboardSafeStreamdown
 >;
 
-export const MessageResponse = memo(
+const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <ClipboardSafeStreamdown
       className={cn(
@@ -322,13 +322,13 @@ export const MessageResponse = memo(
 
 MessageResponse.displayName = "MessageResponse";
 
-export type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
+type MessageAttachmentProps = HTMLAttributes<HTMLDivElement> & {
   data: FileUIPart;
   className?: string;
   onRemove?: () => void;
 };
 
-export function MessageAttachment({
+function MessageAttachment({
   data,
   className,
   onRemove,
@@ -406,9 +406,9 @@ export function MessageAttachment({
   );
 }
 
-export type MessageAttachmentsProps = ComponentProps<"div">;
+type MessageAttachmentsProps = ComponentProps<"div">;
 
-export function MessageAttachments({
+function MessageAttachments({
   children,
   className,
   ...props
@@ -430,7 +430,7 @@ export function MessageAttachments({
   );
 }
 
-export type MessageToolbarProps = ComponentProps<"div">;
+type MessageToolbarProps = ComponentProps<"div">;
 
 export const MessageToolbar = ({
   className,

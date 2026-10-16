@@ -6,9 +6,9 @@ import { UnauthorizedError } from "./errors";
 import { staticApiResponse } from "./static-response";
 
 /** HTTP methods that the gateway's CSRFMiddleware checks. */
-export type StateChangingMethod = "POST" | "PUT" | "DELETE" | "PATCH";
+type StateChangingMethod = "POST" | "PUT" | "DELETE" | "PATCH";
 
-export const STATE_CHANGING_METHODS: ReadonlySet<StateChangingMethod> = new Set(
+const STATE_CHANGING_METHODS: ReadonlySet<StateChangingMethod> = new Set(
   ["POST", "PUT", "DELETE", "PATCH"],
 );
 

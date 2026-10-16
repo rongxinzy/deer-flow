@@ -19,7 +19,7 @@ export const Conversation = ({ className, ...props }: ConversationProps) => (
   />
 );
 
-export type ConversationContentProps = ComponentProps<
+type ConversationContentProps = ComponentProps<
   typeof StickToBottom.Content
 >;
 
@@ -33,7 +33,7 @@ export const ConversationContent = ({
   />
 );
 
-export type ConversationEmptyStateProps = ComponentProps<"div"> & {
+type ConversationEmptyStateProps = ComponentProps<"div"> & {
   title?: string;
   description?: string;
   icon?: React.ReactNode;
@@ -68,9 +68,9 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+type ConversationScrollButtonProps = ComponentProps<typeof Button>;
 
-export const ConversationScrollButton = ({
+const ConversationScrollButton = ({
   className,
   ...props
 }: ConversationScrollButtonProps) => {

@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export interface MessageDetailsMenuEntry {
+interface MessageDetailsMenuEntry {
   id: string;
   title: string;
   subtitle?: string;

@@ -1,10 +1,10 @@
 import { RESERVED_SLASH_SKILL_NAMES, type Skill } from "@/core/skills";
 export {
-  SUGGESTION_TEMPLATE_PLACEHOLDER_PATTERN,
+  
   findSuggestionTemplatePlaceholder,
 } from "@/core/suggestions/placeholders";
 
-export const MAX_SKILL_SUGGESTIONS = 6;
+const MAX_SKILL_SUGGESTIONS = 6;
 
 // Mirror of the backend raw request limit (`ThreadGoalRequest.objective`
 // max_length and `MAX_GOAL_OBJECTIVE_CHARS` in backend goal.py). Kept here so
@@ -23,7 +23,7 @@ export const GOAL_OBJECTIVE_COUNTER_VISIBLE_AT = Math.floor(
   MAX_GOAL_OBJECTIVE_CHARS * 0.9,
 );
 
-export type GoalObjectiveCounter = {
+type GoalObjectiveCounter = {
   length: number;
   max: number;
   overLimit: boolean;
@@ -63,20 +63,20 @@ export type GoalCommand =
   | { kind: "clear" }
   | { kind: "set"; objective: string };
 
-export type InputSubmitAction =
+type InputSubmitAction =
   | { kind: "goal"; command: GoalCommand }
   | { kind: "compact" }
   | { kind: "stop" }
   | { kind: "empty" }
   | { kind: "message" };
 
-export type GoalRequestState = {
+type GoalRequestState = {
   controller: AbortController | null;
   sequence: number;
   threadId: string | null;
 };
 
-export type ActiveGoalRequest = {
+type ActiveGoalRequest = {
   controller: AbortController;
   sequence: number;
   threadId: string;

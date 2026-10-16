@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 const STAGGER_DELAY_MS = 60;
 const STAGGER_DELAY_MS_OFFSET = 250;
 
-export type SuggestionsProps = ComponentProps<typeof ScrollArea>;
+type SuggestionsProps = ComponentProps<typeof ScrollArea>;
 
 export const Suggestions = ({
   className,
@@ -41,7 +41,7 @@ export const Suggestions = ({
   </ScrollArea>
 );
 
-export type SuggestionProps = Omit<ComponentProps<typeof Button>, "onClick"> & {
+type SuggestionProps = Omit<ComponentProps<typeof Button>, "onClick"> & {
   suggestion: React.ReactNode;
   icon?: LucideIcon;
   onClick?: () => void;

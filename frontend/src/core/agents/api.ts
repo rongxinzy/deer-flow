@@ -2,7 +2,7 @@ import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 export { fetchAgentsApiEnabled } from "@/core/features/api";
 
-import type { Agent, CreateAgentRequest, UpdateAgentRequest } from "./types";
+import type { Agent, UpdateAgentRequest } from "./types";
 
 const BACKEND_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
 
@@ -46,22 +46,6 @@ export async function listAgents(): Promise<Agent[]> {
 export async function getAgent(name: string): Promise<Agent> {
   const res = await fetch(`${getBackendBaseURL()}/api/agents/${name}`);
   if (!res.ok) throw new Error(`Agent '${name}' not found`);
-  return res.json() as Promise<Agent>;
-}
-
-export async function createAgent(request: CreateAgentRequest): Promise<Agent> {
-  const res = await fetch(`${getBackendBaseURL()}/api/agents`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { detail?: string };
-    if (isAgentsApiDisabledDetail(err.detail)) {
-      throw new AgentsApiDisabledError(err.detail!);
-    }
-    throw new Error(err.detail ?? `Failed to create agent: ${res.statusText}`);
-  }
   return res.json() as Promise<Agent>;
 }
 

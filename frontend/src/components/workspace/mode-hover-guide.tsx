@@ -5,7 +5,7 @@ import type { Translations } from "@/core/i18n/locales/types";
 
 import { Tooltip } from "./tooltip";
 
-export type AgentMode = "flash" | "thinking" | "pro" | "ultra";
+type AgentMode = "flash" | "thinking" | "pro" | "ultra";
 
 function getModeLabelKey(
   mode: AgentMode,

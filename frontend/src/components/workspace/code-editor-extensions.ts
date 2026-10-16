@@ -1,6 +1,6 @@
 import type { Extension } from "@uiw/react-codemirror";
 
-export type CodeEditorLanguage =
+type CodeEditorLanguage =
   | "css"
   | "html"
   | "javascript"

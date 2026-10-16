@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 
-export type RenderActivityListener = (active: boolean) => void;
+type RenderActivityListener = (active: boolean) => void;
 
 /**
  * Reports whether an element is on screen, in a visible document, and allowed

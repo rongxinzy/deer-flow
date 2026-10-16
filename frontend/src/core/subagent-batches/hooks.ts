@@ -14,9 +14,9 @@ import {
 } from "./api";
 import { isActiveSubagentBatch } from "./types";
 
-export const subagentBatchesKey = (threadId: string) =>
+const subagentBatchesKey = (threadId: string) =>
   ["subagent-batches", threadId] as const;
-export const subagentBatchItemsKey = (threadId: string, batchId: string) =>
+const subagentBatchItemsKey = (threadId: string, batchId: string) =>
   [...subagentBatchesKey(threadId), batchId, "items"] as const;
 const SUBAGENT_BATCH_ITEMS_PAGE_SIZE = 100;
 

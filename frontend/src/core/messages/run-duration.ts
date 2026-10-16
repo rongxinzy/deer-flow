@@ -2,12 +2,12 @@ import type { Message } from "@langchain/langgraph-sdk";
 
 import type { MessageGroup } from "./utils";
 
-export interface RunDurationDisplay {
+interface RunDurationDisplay {
   runId: string;
   durationSeconds: number;
 }
 
-export interface RunDurationFormatter {
+interface RunDurationFormatter {
   lessThanSecond: string;
   hours: (value: number) => string;
   minutes: (value: number) => string;

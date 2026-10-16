@@ -8,7 +8,7 @@ import {
 import { isTerminalSubtaskStatus } from "./subtask-update";
 import type { Subtask } from "./types";
 
-export interface RenderedSubtasks {
+interface RenderedSubtasks {
   tasks: Map<string, Subtask>;
   updates: Array<Partial<Subtask> & { id: string }>;
 }

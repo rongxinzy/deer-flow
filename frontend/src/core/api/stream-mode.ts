@@ -17,7 +17,7 @@ export const CHAT_RUN_STREAM_MODES = [
 const warnedUnsupportedStreamModes = new Set<string>();
 let warnedUnsupportedStreamResumable = false;
 
-export function warnUnsupportedStreamModes(
+function warnUnsupportedStreamModes(
   modes: string[],
   warn: (message: string) => void = console.warn,
 ) {

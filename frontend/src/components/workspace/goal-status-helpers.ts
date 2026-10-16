@@ -1,6 +1,6 @@
 import type { GoalState } from "@/core/threads";
 
-export type GoalContinuationDisplay = {
+type GoalContinuationDisplay = {
   count: number;
   max: number;
 };

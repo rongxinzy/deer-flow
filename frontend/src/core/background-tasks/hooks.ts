@@ -13,10 +13,10 @@ import {
   shouldPollBackgroundTaskDetail,
 } from "./types";
 
-export const backgroundTasksQueryKey = (threadId: string) =>
+const backgroundTasksQueryKey = (threadId: string) =>
   ["background-tasks", threadId] as const;
 
-export const backgroundTaskQueryKey = (threadId: string, taskId: string) =>
+const backgroundTaskQueryKey = (threadId: string, taskId: string) =>
   [...backgroundTasksQueryKey(threadId), taskId] as const;
 
 export function useBackgroundTasks(

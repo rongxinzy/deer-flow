@@ -1,0 +1,8 @@
+# Paths allowed to exceed scripts/check_large_files.py budget (1.5 MiB).
+# One path per line; `#` starts an end-of-line comment.
+
+# Duration baseline for pytest-split least_duration sharding (regenerated locally/CI).
+backend/.test_durations
+
+# Static demo thread media served by URL in the static demo bundle.
+frontend/public/demo/threads/4f3e55ee-f853-43db-bfb3-7d1a411f03cb/user-data/outputs/darcy-proposal-video.mp4

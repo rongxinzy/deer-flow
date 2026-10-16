@@ -23,10 +23,10 @@ export type ScheduleType = "once" | "cron" | "interval";
 
 export type IntervalUnit = "seconds" | "minutes" | "hours";
 
-export const MAX_INTERVAL_SECONDS = 30 * 24 * 60 * 60;
-export const DEFAULT_INTERVAL_MIN_SECONDS = 60;
+const MAX_INTERVAL_SECONDS = 30 * 24 * 60 * 60;
+const DEFAULT_INTERVAL_MIN_SECONDS = 60;
 
-export type ScheduleFormState = {
+type ScheduleFormState = {
   scheduleType: ScheduleType;
   preset?: CronPreset;
   parts?: CronParts;

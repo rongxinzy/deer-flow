@@ -79,7 +79,7 @@ export function PostMeta({
   );
 }
 
-export function PostTags({
+function PostTags({
   tags,
   className,
 }: {

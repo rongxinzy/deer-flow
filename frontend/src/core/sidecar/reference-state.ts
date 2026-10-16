@@ -5,7 +5,7 @@ export type SidecarReferenceStateItem = {
   context: SidecarContext;
 };
 
-export function isSameSidecarContext(
+function isSameSidecarContext(
   left: SidecarContext,
   right: SidecarContext,
 ) {

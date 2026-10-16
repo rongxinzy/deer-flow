@@ -50,9 +50,9 @@ const AUTH_ERROR_CODES = [
   "system_already_initialized",
 ] as const;
 
-export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
+type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
-export interface AuthErrorResponse {
+interface AuthErrorResponse {
   code: AuthErrorCode;
   message: string;
 }

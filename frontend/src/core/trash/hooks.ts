@@ -29,7 +29,7 @@ function invalidateTrashCaches(queryClient: QueryClient) {
   void queryClient.invalidateQueries({ queryKey: PROJECTS_QUERY_KEY });
 }
 
-export const TRASH_DOCUMENTS_PAGE_SIZE = 100;
+const TRASH_DOCUMENTS_PAGE_SIZE = 100;
 
 /**
  * Infinite trash list. The response envelope carries ``total``, so

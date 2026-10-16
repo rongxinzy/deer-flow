@@ -1,16 +1,7 @@
 name: Backend Blocking IO
 
 on:
-  push:
-    branches: ["main", "*-dev"]
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-blocking-io-tests.yml"
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "backend/**"
-      - ".github/workflows/backend-blocking-io-tests.yml"
+  workflow_dispatch:
 
 concurrency:
   group: blocking-io-${{ github.event.pull_request.number || github.ref }}

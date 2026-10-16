@@ -14,7 +14,7 @@ type ConversationReferenceMetadata = {
   agent_name?: string;
 };
 
-export type ConversationReferencesMetadata = {
+type ConversationReferencesMetadata = {
   [CONVERSATION_REFERENCES_KWARG]: ConversationReferenceMetadata[];
 };
 

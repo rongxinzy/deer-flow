@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
-import { reasoningPlugins } from "@/core/streamdown/plugins";
+import { streamdownPluginsWithoutRawHtml } from "@/core/streamdown/plugins";
 import { Shimmer } from "./shimmer";
 import { ClipboardSafeStreamdown } from "./streamdown";
 
@@ -24,7 +24,7 @@ type ReasoningContextValue = {
 
 const ReasoningContext = createContext<ReasoningContextValue | null>(null);
 
-export const useReasoning = () => {
+const useReasoning = () => {
   const context = useContext(ReasoningContext);
   if (!context) {
     throw new Error("Reasoning components must be used within Reasoning");
@@ -32,7 +32,7 @@ export const useReasoning = () => {
   return context;
 };
 
-export type ReasoningProps = ComponentProps<typeof Collapsible> & {
+type ReasoningProps = ComponentProps<typeof Collapsible> & {
   isStreaming?: boolean;
   open?: boolean;
   defaultOpen?: boolean;
@@ -123,7 +123,7 @@ export const Reasoning = memo(
   },
 );
 
-export type ReasoningTriggerProps = ComponentProps<
+type ReasoningTriggerProps = ComponentProps<
   typeof CollapsibleTrigger
 > & {
   getThinkingMessage?: (
@@ -227,7 +227,7 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <ClipboardSafeStreamdown {...reasoningPlugins}>
+      <ClipboardSafeStreamdown {...streamdownPluginsWithoutRawHtml}>
         {children}
       </ClipboardSafeStreamdown>
     </CollapsibleContent>

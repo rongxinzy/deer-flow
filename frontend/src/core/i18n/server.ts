@@ -17,18 +17,6 @@ export async function detectLocaleServer(): Promise<Locale> {
   return normalizeLocale(locale);
 }
 
-export async function setLocale(locale: string | Locale): Promise<Locale> {
-  const normalizedLocale = normalizeLocale(locale);
-  const cookieStore = await cookies();
-  cookieStore.set("locale", encodeURIComponent(normalizedLocale), {
-    maxAge: 365 * 24 * 60 * 60,
-    path: "/",
-    sameSite: "lax",
-  });
-
-  return normalizedLocale;
-}
-
 export async function getI18n(localeOverride?: string | Locale) {
   const locale = localeOverride
     ? normalizeLocale(localeOverride)

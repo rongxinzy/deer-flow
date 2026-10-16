@@ -1,6 +1,6 @@
 import type { WorkspaceChangeSummary, WorkspaceFileChange } from "./types";
 
-export type WorkspaceChangeLineClass =
+type WorkspaceChangeLineClass =
   | "addition"
   | "context"
   | "deletion"

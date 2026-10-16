@@ -46,7 +46,7 @@ export interface UploadLimitViolation {
   limit: number;
 }
 
-export interface UploadLimitValidationResult {
+interface UploadLimitValidationResult {
   accepted: File[];
   rejected: File[];
   violations: UploadLimitViolation[];

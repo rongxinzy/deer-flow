@@ -137,7 +137,7 @@ export function pathOfPublicDemoThread(threadId: string): string {
   return `${SHOWCASE_ROUTE_PREFIX}/${encodeURIComponent(threadId)}`;
 }
 
-export type ThreadSearchParams = NonNullable<
+type ThreadSearchParams = NonNullable<
   Parameters<ThreadsClient["search"]>[0]
 >;
 

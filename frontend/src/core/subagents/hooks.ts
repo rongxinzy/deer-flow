@@ -11,7 +11,7 @@ import type {
   UpdateManagedSubagentRequest,
 } from "./types";
 
-export const SUBAGENTS_QUERY_KEY = ["subagents"] as const;
+const SUBAGENTS_QUERY_KEY = ["subagents"] as const;
 
 export function useSubagents() {
   const query = useQuery({

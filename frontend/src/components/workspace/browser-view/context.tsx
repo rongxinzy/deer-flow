@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-export interface BrowserViewFrame {
+interface BrowserViewFrame {
   screenshot: string;
   url?: string;
   title?: string;
@@ -65,12 +65,4 @@ export function BrowserViewProvider({ children }: { children: ReactNode }) {
 
 export function useMaybeBrowserView(): BrowserViewContextValue | null {
   return useContext(BrowserViewContext);
-}
-
-export function useBrowserView(): BrowserViewContextValue {
-  const ctx = useContext(BrowserViewContext);
-  if (!ctx) {
-    throw new Error("useBrowserView must be used within a BrowserViewProvider");
-  }
-  return ctx;
 }

@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import {
   configureChannelProvider,
   connectChannelProvider,
-  disconnectChannelConnection,
   disconnectChannelProvider,
   listChannelConnections,
   listChannelProviders,
@@ -95,20 +94,6 @@ export function useConfigureChannelProvider() {
       provider: ChannelProviderId;
       values: ChannelRuntimeConfigValues;
     }) => configureChannelProvider(provider, values),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: channelProviderQueryKey });
-      void queryClient.invalidateQueries({
-        queryKey: channelConnectionsQueryKey,
-      });
-    },
-  });
-}
-
-export function useDisconnectChannelConnection() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (connectionId: string) =>
-      disconnectChannelConnection(connectionId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: channelProviderQueryKey });
       void queryClient.invalidateQueries({

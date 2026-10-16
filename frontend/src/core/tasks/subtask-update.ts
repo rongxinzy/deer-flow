@@ -98,7 +98,7 @@ function usageEquals(a: Subtask["usage"], b: Subtask["usage"]): boolean {
   );
 }
 
-export type SubtaskNotification = "eager" | "deferred" | "none";
+type SubtaskNotification = "eager" | "deferred" | "none";
 
 /**
  * Decide how `useUpdateSubtask` should publish a computed transition.

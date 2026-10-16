@@ -2,7 +2,7 @@ import { throwGatewayApiError } from "@/core/api/errors";
 import { fetch } from "@/core/api/fetcher";
 import { getBackendBaseURL } from "@/core/config";
 
-export interface BrowserNavigateResult {
+interface BrowserNavigateResult {
   screenshot: string | null;
   url: string;
   title: string;

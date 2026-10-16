@@ -8,7 +8,7 @@ import type { Skill } from "./type";
 // multipart framing fits around the same 100 MiB archive limit.
 export const MAX_SKILL_ARCHIVE_UPLOAD_BYTES = 100 * 1024 * 1024;
 
-export interface SkillSecurityFinding {
+interface SkillSecurityFinding {
   rule_id: string;
   severity: string;
   file: string | null;
@@ -151,12 +151,12 @@ export async function enableSkill(skillName: string, enabled: boolean) {
   return response.json();
 }
 
-export interface InstallSkillRequest {
+interface InstallSkillRequest {
   thread_id: string;
   path: string;
 }
 
-export interface InstallSkillResponse {
+interface InstallSkillResponse {
   success: boolean;
   skill_name: string;
   message: string;

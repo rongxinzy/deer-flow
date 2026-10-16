@@ -17,7 +17,7 @@ import type {
   PromoteThreadFileInput,
 } from "./types";
 
-export type ProjectListResponse = {
+type ProjectListResponse = {
   projects: Project[];
 };
 

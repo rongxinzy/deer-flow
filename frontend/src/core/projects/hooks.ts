@@ -105,7 +105,7 @@ export function useProject(id: string) {
   });
 }
 
-export const PROJECT_THREADS_PAGE_SIZE = 100;
+const PROJECT_THREADS_PAGE_SIZE = 100;
 
 /**
  * Project-keyed infinite thread list. Keying the accumulation on the project
@@ -200,7 +200,7 @@ export function useDeleteProject() {
   });
 }
 
-export const PROJECT_DOCUMENTS_PAGE_SIZE = 100;
+const PROJECT_DOCUMENTS_PAGE_SIZE = 100;
 
 /**
  * Project-keyed infinite shelf list. The response envelope carries ``total``,

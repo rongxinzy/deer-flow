@@ -5,8 +5,8 @@ import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 
 import {
-  reasoningPlugins,
   streamdownPlugins,
+  streamdownPluginsWithoutRawHtml,
   streamdownRenderingPlugins,
   streamdownSmoothStreamingAnimation,
   streamdownWordAnimation,
@@ -42,7 +42,9 @@ test("streamdownPlugins includes rehypeRaw", () => {
 test("shared streamdown configs register code highlighting and Mermaid", () => {
   expect(streamdownRenderingPlugins).toEqual({ code, mermaid });
   expect(streamdownPlugins.plugins).toBe(streamdownRenderingPlugins);
-  expect(reasoningPlugins.plugins).toBe(streamdownRenderingPlugins);
+  expect(streamdownPluginsWithoutRawHtml.plugins).toBe(
+    streamdownRenderingPlugins,
+  );
 });
 
 test("the shared code plugin produces highlighted Shiki tokens", async () => {
@@ -70,7 +72,7 @@ test("the shared code plugin produces highlighted Shiki tokens", async () => {
   ).toBe(true);
 });
 
-test("reasoningPlugins does not include rehypeRaw", () => {
-  const flat = reasoningPlugins.rehypePlugins?.flat();
+test("streamdownPluginsWithoutRawHtml does not include rehypeRaw", () => {
+  const flat = streamdownPluginsWithoutRawHtml.rehypePlugins?.flat();
   expect(flat).not.toContain(rehypeRaw);
 });

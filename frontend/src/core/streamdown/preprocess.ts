@@ -203,7 +203,7 @@ function convertLatexDelimitersInLine(
  *   ...
  *   \]
  */
-export function normalizeLatexMathDelimiters(markdown: string): string {
+function normalizeLatexMathDelimiters(markdown: string): string {
   if (!/[\\][([\])]/.test(markdown)) {
     return markdown;
   }

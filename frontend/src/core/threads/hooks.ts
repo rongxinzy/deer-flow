@@ -144,7 +144,7 @@ type EditRegeneratePrepareResponse = RegeneratePrepareResponse & {
   source_message_ids: string[];
 };
 
-export type PendingPreparedReplayMask = {
+type PendingPreparedReplayMask = {
   kind: "regenerate" | "edit";
   targetRunId: string;
   supersededMessageIds: string[];
@@ -332,7 +332,7 @@ function clearReconnectRun(threadId: string, runId: string): void {
  * turn has no visible human (hidden human-input reply, regenerate replay) —
  * such turns must never borrow an older visible human as their anchor.
  */
-export type LocalTurnAnchor = {
+type LocalTurnAnchor = {
   threadId: string;
   humanIdentity: string | null;
   baselineIdentities: ReadonlySet<string>;
@@ -584,7 +584,7 @@ export function getThreadHistoryNextPageParam(
   return lastPage.next_before_seq;
 }
 
-export const threadHistoryQueryKey = (threadId: string) =>
+const threadHistoryQueryKey = (threadId: string) =>
   ["thread-messages", threadId] as const;
 
 export function buildThreadMessagesPageUrl(
@@ -1430,7 +1430,7 @@ export function getSummarizationMiddlewareMessages(
 
 export const STREAM_RENDER_COALESCE_MS = 80;
 
-export type CoalesceDecision =
+type CoalesceDecision =
   | { action: "flush-now" }
   | { action: "schedule"; delayMs: number }
   | { action: "wait" };
@@ -1471,7 +1471,7 @@ function sameMessageArray(a: Message[], b: Message[]): boolean {
   );
 }
 
-export function useCoalescedStreamMessages(
+function useCoalescedStreamMessages(
   messages: Message[],
   isStreaming: boolean,
   intervalMs: number = STREAM_RENDER_COALESCE_MS,
@@ -1558,7 +1558,7 @@ export function useCoalescedStreamMessages(
   return isStreaming && snapshot !== null ? snapshot : messages;
 }
 
-export function upsertThreadInSearchCache(
+function upsertThreadInSearchCache(
   queryClient: QueryClient,
   thread: AgentThread,
 ) {
@@ -3097,7 +3097,7 @@ export const THREAD_HISTORY_QUERY_POLICY = {
   staleTime: 5 * 60 * 1_000,
 } as const;
 
-export function useThreadHistory(
+function useThreadHistory(
   threadId: string,
   { enabled = true, pendingSupersededRunIds }: ThreadHistoryOptions = {},
 ) {
@@ -3411,7 +3411,7 @@ export function setThreadMetadataInCaches(
   );
 }
 
-export function setThreadTitleInCaches(
+function setThreadTitleInCaches(
   queryClient: QueryClient,
   threadId: string,
   title: string,
@@ -3451,7 +3451,7 @@ export function useInfiniteThreads(
   });
 }
 
-export function useThreadRuns(
+function useThreadRuns(
   threadId?: string,
   { enabled = true }: { enabled?: boolean } = {},
 ) {
@@ -3628,18 +3628,6 @@ export function useMoveThreadToProject(options?: {
         queryKey: [...PROJECTS_QUERY_KEY, "threads"],
       });
     },
-  });
-}
-
-export function useRunDetail(threadId: string, runId: string) {
-  const apiClient = getAPIClient();
-  return useQuery<Run>({
-    queryKey: ["thread", threadId, "run", runId],
-    queryFn: async () => {
-      const response = await apiClient.runs.get(threadId, runId);
-      return response;
-    },
-    refetchOnWindowFocus: false,
   });
 }
 
