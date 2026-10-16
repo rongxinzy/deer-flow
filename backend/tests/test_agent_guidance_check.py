@@ -198,4 +198,4 @@ def test_repository_exposes_one_local_and_one_ci_entrypoint() -> None:
     assert "scripts/check_agent_guidance.py" in makefile
     assert "vulture" in workflow
     assert "knip" in workflow
-    assert "name: ci" in workflow or "\n  ci:" in workflow
+    assert "name: ci-gate" in workflow or "\n  ci-gate:" in workflow

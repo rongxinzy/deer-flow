@@ -1,6 +1,6 @@
 name: DevOps gate
 
-# Retired from the PR path: branch protection now requires the aggregate `CI / ci` job.
+# Retired from the PR path: branch protection requires the aggregate `CI / ci-gate` job.
 # Kept for manual runs only so existing links do not 404.
 
 on:
