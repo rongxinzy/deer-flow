@@ -19,8 +19,11 @@ existing automatic-memory behavior:
 - one recorder-owned SDK client is shared with retrieval and closed through
   DeerFlow's existing memory shutdown contract.
 
-This backend supports `memory.mode: middleware`. It does not implement DeerMem
-fact CRUD, import/export, or the Settings memory-document view. OpenViking MCP
+This backend supports `memory.mode: middleware`. Memory governance is served from
+memory files: `get_memory` / `clear_memory` / `create_fact` / `update_fact` /
+`delete_fact` are implemented, so the gateway's fact endpoints and the Settings
+memory-document view work against OpenViking instead of answering 501.
+Import/export and the cache-reload operation are not implemented. OpenViking MCP
 tools are a separate integration surface and are not enabled by this backend.
 
 ## Authentication boundary
@@ -153,6 +156,46 @@ Named agents use lowercase OpenViking peer IDs. Names that are not valid peer
 IDs, conflict with the default, or enter the reserved `df-agent-` namespace are
 mapped to collision-resistant IDs. USER-key identity remains the security
 boundary; peers separate memory scopes within that user.
+
+## Written facts
+
+`create_fact` writes an ordinary OpenViking memory file under the actor's own
+memory root — `viking://~/memories` for a whole-actor write, that actor peer's
+`memories` directory for an agent- or requester-scoped one — so a fact created
+through the gateway is recalled like any captured memory and appears in
+`get_memory` without widening any scope. The file name is derived from the
+normalized content (`str.strip().casefold()`, the same key `memory_add` compares
+before writing), and the write is issued as an OpenViking *create*: the same fact
+therefore always maps to the same URI, and a concurrent duplicate is rejected as
+`ValueError("Duplicate fact")` (the gateway's 409, and what `memory_add` reports
+as an error) instead of overwriting or duplicating the entry. That rejection is
+only reported once the file at that URI is confirmed to hold the same content, so
+an unreachable or failing backend still surfaces as its own error.
+
+`update_fact` changes the content of an entry addressed by the URI
+`search`/`get_memory` returned. An id outside the actor's scope is refused, and a
+fact this actor does not currently list is reported as `KeyError` (the gateway's
+404) rather than as an empty document. Because the file name is the digest of the
+content, changed content is written to the URI that content names — a *create*,
+like `create_fact` — and the old URI is removed only once that write has been
+confirmed, so a failed or refused write leaves the fact where it was. The
+document the call returns therefore reports the fact under its new URI, and a
+`create` of the old body afterwards is a normal creation again rather than a race
+for a file that was rewritten underneath its name. An update whose new content is
+already stored at the URI it names is refused as `ValueError("Duplicate fact")`
+(the old file is kept), and a rewrite of the content the fact already holds is a
+no-op. Both writes pass `wait=true`, because
+OpenViking indexes new content in the background and recall would otherwise miss
+a fact created moments earlier.
+
+An OpenViking memory file holds content only. `category` and `confidence` are
+accepted and validated for the DeerFlow contract but not persisted, and recall
+reports the category OpenViking derives for an entry rather than DeerFlow's
+label. No category directory is created for a fact: OpenViking's category
+vocabulary does not cover DeerFlow's free-form labels, and its own extraction owns
+the `memories/<type>/` directories. Directories inside a memory root are skipped
+by the governance reads, because a directory is not a fact and reading one back as
+a file fails.
 
 ## Deleted entries are not recalled
 
