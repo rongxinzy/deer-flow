@@ -117,18 +117,17 @@ jobs:
           uv sync --group dev
           uv run vulture app packages --min-confidence 80
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Knip (frontend)
         working-directory: frontend
@@ -176,18 +175,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -213,18 +211,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Restore Next.js build cache
         uses: actions/cache@v4
@@ -348,18 +345,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Install frontend dependencies
         working-directory: frontend
@@ -404,6 +400,12 @@ jobs:
         working-directory: backend
         run: PYTHONPATH=. uv run pytest tests/test_replay_golden.py -q
 
+      - name: Setup pnpm
+        if: matrix.layer == 'fullstack-render'
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         if: matrix.layer == 'fullstack-render'
         uses: actions/setup-node@v4
@@ -411,14 +413,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        if: matrix.layer == 'fullstack-render'
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        if: matrix.layer == 'fullstack-render'
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Install frontend dependencies
         if: matrix.layer == 'fullstack-render'
@@ -459,18 +453,17 @@ jobs:
         working-directory: backend
         run: uv sync --locked
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Use pinned pnpm
-        run: corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
 
       - name: Install frontend dependencies
         working-directory: frontend
