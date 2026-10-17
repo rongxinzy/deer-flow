@@ -37,5 +37,3 @@ def test_omitted_secret_cannot_create_credentials_or_clear_an_existing_secret(ex
     with pytest.raises(HTTPException) as rejected:
         channel_connections._required_runtime_values("wecom", {"bot_id": "synthetic-id", **submitted}, existing)
     assert rejected.value.status_code == 400
-
-

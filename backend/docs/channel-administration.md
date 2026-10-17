@@ -11,4 +11,3 @@ secret; explicit empty input fails required validation. The existing masked
 `********` update remains supported. Neither response returns raw credentials.
 WeCom connectivity requires SDK authentication plus an open socket; WeChat
 requires a recent successful platform poll. Worker startup alone is insufficient.
-

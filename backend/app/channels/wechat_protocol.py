@@ -23,5 +23,3 @@ def build_ilink_client_version(version: str) -> str:
 
 def build_wechat_uin() -> str:
     return base64.b64encode(str(secrets.randbits(32)).encode("utf-8")).decode("utf-8")
-
-
