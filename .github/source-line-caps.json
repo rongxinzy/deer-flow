@@ -64,7 +64,7 @@
     "backend/tests/test_run_manager.py": 1682,
     "backend/tests/test_durable_context_middleware.py": 1677,
     "backend/tests/test_run_event_store.py": 1666,
-    "backend/app/channels/wechat.py": 1663,
+    "backend/app/channels/wechat.py": 1659,
     "backend/tests/test_skillscan_native.py": 1626,
     "backend/tests/test_summarization_middleware.py": 1620,
     "backend/app/gateway/routers/mcp.py": 1615,

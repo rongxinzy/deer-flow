@@ -27,6 +27,8 @@ from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.wechat_protocol import build_ilink_client_version as _build_ilink_client_version
+from app.channels.wechat_protocol import build_wechat_uin as _build_wechat_uin
 
 logger = logging.getLogger(__name__)
 
@@ -45,27 +47,6 @@ class UploadMediaType(IntEnum):
     VIDEO = 2
     FILE = 3
     VOICE = 4
-
-
-def _build_ilink_client_version(version: str) -> str:
-    parts = [part.strip() for part in version.split(".")]
-
-    def _part(index: int) -> int:
-        if index >= len(parts):
-            return 0
-        try:
-            return max(0, min(int(parts[index] or 0), 0xFF))
-        except ValueError:
-            return 0
-
-    major = _part(0)
-    minor = _part(1)
-    patch = _part(2)
-    return str((major << 16) | (minor << 8) | patch)
-
-
-def _build_wechat_uin() -> str:
-    return base64.b64encode(str(secrets.randbits(32)).encode("utf-8")).decode("utf-8")
 
 
 def _md5_hex(content: bytes) -> str:
