@@ -13,7 +13,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-export type MobileNavLink = {
+type MobileNavLink = {
   href: string;
   label: string;
 };

@@ -455,7 +455,7 @@ class RunJournal(BaseCallbackHandler):
                 if self._first_human_message_captured:
                     break
 
-    def on_llm_start(self, serialized: dict, prompts: list[str], *, run_id: UUID, parent_run_id: UUID | None = None, tags: list[str] | None = None, metadata: dict[str, Any] | None = None, **kwargs: Any) -> None:
+    def on_llm_start(self, serialized: dict, _prompts: list[str], *, run_id: UUID, parent_run_id: UUID | None = None, tags: list[str] | None = None, metadata: dict[str, Any] | None = None, **kwargs: Any) -> None:
         # Fallback: on_chat_model_start is preferred. This just tracks latency.
         self._llm_start_times[str(run_id)] = time.monotonic()
 
@@ -591,7 +591,7 @@ class RunJournal(BaseCallbackHandler):
             content=str(error),
         )
 
-    def on_tool_start(self, serialized, input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, inputs=None, **kwargs):
+    def on_tool_start(self, serialized, _input_str, *, run_id, parent_run_id=None, tags=None, metadata=None, inputs=None, **kwargs):
         """Cache the executing tool name for artifact attribution."""
         tool_run_id = str(run_id)
         tool_name = serialized.get("name") if isinstance(serialized, Mapping) else None

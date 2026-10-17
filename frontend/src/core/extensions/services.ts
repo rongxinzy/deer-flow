@@ -11,7 +11,7 @@ import type {
   FrontendServices,
 } from "./contracts";
 
-export type HostServices = Omit<FrontendServices, "callBackend">;
+type HostServices = Omit<FrontendServices, "callBackend">;
 
 /** Namespace comes from the installed page snapshot, never from action input. */
 export function bindFrontendServices(

@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { MobileNav } from "./mobile-nav";
 import { StarCounter } from "./star-counter";
 
-export type HeaderProps = {
+type HeaderProps = {
   className?: string;
   homeURL?: string;
   locale?: Locale;

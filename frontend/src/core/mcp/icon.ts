@@ -1,11 +1,11 @@
 import type { MCPServerConfig } from "./types";
 
-export const MAX_PLUGIN_ICON_FILE_BYTES = 2 * 1024 * 1024;
-export const MAX_PLUGIN_ICON_DATA_LENGTH = 100_000;
+const MAX_PLUGIN_ICON_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_PLUGIN_ICON_DATA_LENGTH = 100_000;
 const ICON_SIZE = 128;
 const ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
-export type PluginIconErrorCode = "type" | "size" | "invalid";
+type PluginIconErrorCode = "type" | "size" | "invalid";
 export class PluginIconError extends Error {
   constructor(readonly code: PluginIconErrorCode) {
     super(code);

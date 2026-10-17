@@ -66,7 +66,7 @@ export type HumanInputResponse =
       value: string;
     };
 
-export type HumanInputThreadState = {
+type HumanInputThreadState = {
   answeredResponses: Map<string, HumanInputResponse>;
   latestOpenRequestId: string | null;
 };
@@ -256,9 +256,7 @@ function parseFields(value: unknown): HumanInputField[] | undefined {
   return fields;
 }
 
-export function parseHumanInputRequest(
-  value: unknown,
-): HumanInputRequest | null {
+function parseHumanInputRequest(value: unknown): HumanInputRequest | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -329,9 +327,7 @@ export function parseHumanInputRequest(
   };
 }
 
-export function parseHumanInputResponse(
-  value: unknown,
-): HumanInputResponse | null {
+function parseHumanInputResponse(value: unknown): HumanInputResponse | null {
   if (!isRecord(value)) {
     return null;
   }

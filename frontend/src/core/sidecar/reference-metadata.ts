@@ -1,13 +1,13 @@
 import type { SidecarContext, SidecarContextRole } from "./context";
 
-export type ReferenceMessageContextMetadata = {
+type ReferenceMessageContextMetadata = {
   label: string;
   message_id?: string;
   role: SidecarContextRole;
   content: string;
 };
 
-export type ReferenceMessageMetadata = {
+type ReferenceMessageMetadata = {
   referenced_message_count: number;
   referenced_message_ids: string[];
   referenced_message_roles: SidecarContextRole[];

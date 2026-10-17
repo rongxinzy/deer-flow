@@ -4,7 +4,7 @@ export function getTabularDelimiter(
   return language === "csv" ? "," : language === "tsv" ? "\t" : null;
 }
 
-export type ArtifactViewMode = "code" | "preview";
+type ArtifactViewMode = "code" | "preview";
 
 type ArtifactPreviewMessage = {
   type?: string;
@@ -19,7 +19,7 @@ type ArtifactPreviewMessage = {
   }>;
 };
 
-export function isWriteFileArtifact(filepath: string) {
+function isWriteFileArtifact(filepath: string) {
   return filepath.startsWith("write-file:");
 }
 

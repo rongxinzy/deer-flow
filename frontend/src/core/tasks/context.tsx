@@ -10,7 +10,7 @@ import {
 import { computeNextSubtask, subtaskNotification } from "./subtask-update";
 import type { Subtask } from "./types";
 
-export interface SubtaskContextValue {
+interface SubtaskContextValue {
   tasks: Record<string, Subtask>;
   // Always mirrors the latest `tasks` (updated during render). `updateSubtask`
   // reads/writes through this instead of a closure snapshot so async callers

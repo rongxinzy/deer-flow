@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
-export interface MessageDetail {
+interface MessageDetail {
   id: string;
   title: string;
   content: ReactNode;

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import {
-  createAgent,
   deleteAgent,
   fetchAgentsApiEnabled,
   getAgent,
@@ -14,7 +13,7 @@ import {
   resolveAgentsApiEnabled,
   writeCachedAgentsApiEnabled,
 } from "./feature-cache";
-import type { CreateAgentRequest, UpdateAgentRequest } from "./types";
+import type { UpdateAgentRequest } from "./types";
 
 export function useAgentsApiEnabled() {
   const { data, isPending } = useQuery({
@@ -70,16 +69,6 @@ export function useAgent(name: string | null | undefined) {
     enabled: !!name,
   });
   return { agent: data ?? null, isLoading, error };
-}
-
-export function useCreateAgent() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (request: CreateAgentRequest) => createAgent(request),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["agents"] });
-    },
-  });
 }
 
 export function useUpdateAgent() {

@@ -1,30 +1,7 @@
 name: Skill Review CI
 
 on:
-  push:
-    branches: ["main", "2.1.x-dev"]
-    paths:
-      - "skills/public/**"
-      - "backend/packages/harness/deerflow/skills/review/**"
-      - "contracts/skill_review/**"
-      - "scripts/review_changed_public_skills.py"
-      - "scripts/skill_review_waivers.py"
-      - ".github/skill-review-waivers.v1.json"
-      - "backend/pyproject.toml"
-      - "backend/uv.lock"
-      - ".github/workflows/skill-review-ci.yml"
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "skills/public/**"
-      - "backend/packages/harness/deerflow/skills/review/**"
-      - "contracts/skill_review/**"
-      - "scripts/review_changed_public_skills.py"
-      - "scripts/skill_review_waivers.py"
-      - ".github/skill-review-waivers.v1.json"
-      - "backend/pyproject.toml"
-      - "backend/uv.lock"
-      - ".github/workflows/skill-review-ci.yml"
+  workflow_dispatch:
 
 concurrency:
   group: skill-review-ci-${{ github.event.pull_request.number || github.ref }}

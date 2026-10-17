@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 export const ModelPicker = PopoverPrimitive.Root;
 export const ModelPickerTrigger = PopoverPrimitive.Trigger;
 
-export interface ModelPickerContentProps {
+interface ModelPickerContentProps {
   open: boolean;
   models: readonly Model[];
   selectedModelName?: string;

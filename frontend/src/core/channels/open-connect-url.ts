@@ -1,4 +1,4 @@
-export type ChannelConnectWindow = Window | null;
+type ChannelConnectWindow = Window | null;
 
 export function prepareConnectWindow(): ChannelConnectWindow {
   const opened = window.open("about:blank", "_blank");

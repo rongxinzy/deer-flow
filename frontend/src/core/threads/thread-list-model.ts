@@ -4,7 +4,7 @@ import { isThreadPinned, sortPinnedThreads } from "./utils";
 const MAX_VISIBLE_THREADS = 200;
 const modelCache = new WeakMap<object, ThreadListModel>();
 
-export type ThreadListModel = {
+type ThreadListModel = {
   byId: ReadonlyMap<string, AgentThread>;
   threads: readonly AgentThread[];
   displayedThreads: readonly AgentThread[];

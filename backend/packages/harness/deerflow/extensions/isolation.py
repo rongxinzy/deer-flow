@@ -225,7 +225,7 @@ class IsolatedMiddleware(AgentMiddleware):
         handler_error_traceback: TracebackType | None = None
         duplicate_call_error: RuntimeError | None = None
 
-        def tracked_handler(inner_request: Any) -> Any:
+        def tracked_handler(_inner_request: Any) -> Any:
             nonlocal handler_called, duplicate_call_error
             nonlocal handler_error, handler_error_traceback
             nonlocal handler_result, handler_succeeded
@@ -294,7 +294,7 @@ class IsolatedMiddleware(AgentMiddleware):
         handler_error_traceback: TracebackType | None = None
         duplicate_call_error: RuntimeError | None = None
 
-        async def tracked_handler(inner_request: Any) -> Any:
+        async def tracked_handler(_inner_request: Any) -> Any:
             nonlocal handler_called, duplicate_call_error
             nonlocal handler_error, handler_error_traceback
             nonlocal handler_result, handler_succeeded

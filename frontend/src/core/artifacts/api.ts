@@ -2,18 +2,18 @@ import { fetch } from "@/core/api/fetcher";
 
 import { urlOfArtifact, urlOfArtifactArchive } from "./utils";
 
-export interface ArtifactUpdateResponse {
+interface ArtifactUpdateResponse {
   path: string;
   sha256: string;
   size: number;
 }
 
-export interface ArtifactArchiveDownload {
+interface ArtifactArchiveDownload {
   blob: Blob;
   filename: string;
 }
 
-export interface ArtifactArchiveManifest {
+interface ArtifactArchiveManifest {
   fileCount: number;
 }
 

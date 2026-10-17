@@ -1,4 +1,4 @@
-export type SpeechRecognitionErrorCode =
+type SpeechRecognitionErrorCode =
   | "aborted"
   | "audio-capture"
   | "bad-grammar"
@@ -47,17 +47,17 @@ type SpeechRecognitionWindow = Window &
     webkitSpeechRecognition?: SpeechRecognitionConstructor;
   };
 
-export type SpeechRecognitionAlternativeLike = {
+type SpeechRecognitionAlternativeLike = {
   transcript?: string;
 };
 
-export type SpeechRecognitionResultLike = {
+type SpeechRecognitionResultLike = {
   0?: SpeechRecognitionAlternativeLike;
   isFinal: boolean;
   length: number;
 };
 
-export type SpeechRecognitionResultListLike = {
+type SpeechRecognitionResultListLike = {
   [index: number]: SpeechRecognitionResultLike | undefined;
   length: number;
 };
@@ -142,7 +142,7 @@ export function appendSpeechTranscript(baseText: string, transcript: string) {
   return `${cleanBase} ${cleanTranscript}`;
 }
 
-export function normalizeSpeechTranscript(value: string) {
+function normalizeSpeechTranscript(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 

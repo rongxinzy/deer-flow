@@ -301,10 +301,10 @@ def test_main_fails_closed_on_malformed_head_manifest(tmp_path: Path, monkeypatc
 
 
 def test_workflow_triggers_on_waiver_implementation_and_manifest() -> None:
-    workflow = (REPO_ROOT / ".github/workflows/skill-review-ci.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert workflow.count('"scripts/skill_review_waivers.py"') == 2
-    assert workflow.count('".github/skill-review-waivers.v1.json"') == 2
+    assert workflow.count("scripts/skill_review_waivers.py") >= 1
+    assert workflow.count(".github/skill-review-waivers.v1.json") >= 1
 
 
 def test_run_review_keeps_waived_error_visible_and_passes(tmp_path: Path, monkeypatch, capsys) -> None:

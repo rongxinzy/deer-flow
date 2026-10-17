@@ -3,7 +3,7 @@ import { getBackendBaseURL } from "@/core/config";
 
 export const DEFAULT_MAX_SUGGESTIONS = 3;
 
-export interface SuggestionsConfigResponse {
+interface SuggestionsConfigResponse {
   enabled: boolean;
   max_suggestions: number;
 }

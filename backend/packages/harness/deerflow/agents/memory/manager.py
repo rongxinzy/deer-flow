@@ -553,7 +553,7 @@ class MemoryManager(BaseModel):
         (default: none)."""
         return ""
 
-    def on_turn_start(self, turn_number: int, message: Any, **kwargs: Any) -> None:
+    def on_turn_start(self, _turn_number: int, message: Any, **kwargs: Any) -> None:
         """Turn-start nudge (future background review). Default: no-op."""
         return None
 

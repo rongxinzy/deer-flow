@@ -4,9 +4,9 @@ import { normalizeTokenUsage } from "../messages/usage";
 
 import type { Subtask } from "./types";
 
-export type SubtaskStatus = Subtask["status"];
+type SubtaskStatus = Subtask["status"];
 
-export interface SubtaskResultUpdate {
+interface SubtaskResultUpdate {
   status: SubtaskStatus;
   result?: string;
   error?: string;
@@ -41,7 +41,7 @@ export const SUBAGENT_STATUS_KEY = "subagent_status";
 export const SUBAGENT_STOP_REASON_KEY = "subagent_stop_reason";
 export const SUBAGENT_ERROR_KEY = "subagent_error";
 export const SUBAGENT_RESULT_BRIEF_KEY = "subagent_result_brief";
-export const SUBAGENT_RESULT_SHA256_KEY = "subagent_result_sha256";
+const SUBAGENT_RESULT_SHA256_KEY = "subagent_result_sha256";
 export const SUBAGENT_MODEL_NAME_KEY = "subagent_model_name";
 export const SUBAGENT_TOKEN_USAGE_KEY = "subagent_token_usage";
 /**

@@ -3,7 +3,7 @@ import { createContext, useContext } from "react";
 
 import type { AgentThreadState } from "@/core/threads";
 
-export interface ThreadContextType {
+interface ThreadContextType {
   thread: BaseStream<AgentThreadState>;
   isMock?: boolean;
 }

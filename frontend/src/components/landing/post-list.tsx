@@ -79,13 +79,7 @@ export function PostMeta({
   );
 }
 
-export function PostTags({
-  tags,
-  className,
-}: {
-  tags?: unknown;
-  className?: string;
-}) {
+function PostTags({ tags, className }: { tags?: unknown; className?: string }) {
   if (!Array.isArray(tags)) {
     return null;
   }

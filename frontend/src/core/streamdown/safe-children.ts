@@ -9,11 +9,11 @@ import {
 
 type StreamdownChildren = ComponentProps<typeof Streamdown>["children"];
 
-export function getSafeStreamdownMarkdown(markdown: string): string {
+function getSafeStreamdownMarkdown(markdown: string): string {
   return normalizeStreamdownMathMarkdown(capMarkdownNesting(markdown));
 }
 
-export function getSafeStreamdownChildren(
+function getSafeStreamdownChildren(
   children: StreamdownChildren,
 ): StreamdownChildren {
   if (typeof children !== "string") {

@@ -986,10 +986,9 @@ class DingTalkChannel(Channel):
         conversation_id: str,
         text: str,
         *,
-        at_user_ids: list[str] | None = None,  # noqa: ARG002
+        at_user_ids: list[str] | None = None,
     ) -> None:
-        # at_user_ids accepted for call-site compatibility but not passed to the API
-        # (sampleMarkdown does not support @mentions).
+        _ = at_user_ids  # call-site kwarg; sampleMarkdown does not support @mentions
         text = _adapt_markdown_for_dingtalk(text)
         token = await self._get_access_token()
 
