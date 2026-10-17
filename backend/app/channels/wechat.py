@@ -27,6 +27,8 @@ from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command
 from app.channels.connection_identity import attach_connection_identity
 from app.channels.message_bus import InboundMessage, InboundMessageType, MessageBus, OutboundMessage, ResolvedAttachment
+from app.channels.wechat_protocol import build_ilink_client_version as _build_ilink_client_version
+from app.channels.wechat_protocol import build_wechat_uin as _build_wechat_uin
 
 logger = logging.getLogger(__name__)
 
@@ -45,27 +47,6 @@ class UploadMediaType(IntEnum):
     VIDEO = 2
     FILE = 3
     VOICE = 4
-
-
-def _build_ilink_client_version(version: str) -> str:
-    parts = [part.strip() for part in version.split(".")]
-
-    def _part(index: int) -> int:
-        if index >= len(parts):
-            return 0
-        try:
-            return max(0, min(int(parts[index] or 0), 0xFF))
-        except ValueError:
-            return 0
-
-    major = _part(0)
-    minor = _part(1)
-    patch = _part(2)
-    return str((major << 16) | (minor << 8) | patch)
-
-
-def _build_wechat_uin() -> str:
-    return base64.b64encode(str(secrets.randbits(32)).encode("utf-8")).decode("utf-8")
 
 
 def _md5_hex(content: bytes) -> str:
@@ -253,6 +234,7 @@ class WechatChannel(Channel):
         super().__init__(name="wechat", bus=bus, config=config)
         self._main_loop: asyncio.AbstractEventLoop | None = None
         self._poll_task: asyncio.Task | None = None
+        self._last_poll_success_at: float | None = None
         self._client: httpx.AsyncClient | None = None
         self._auth_lock = asyncio.Lock()
 
@@ -293,6 +275,14 @@ class WechatChannel(Channel):
         # loop (the strict blocking-IO gate raises BlockingError on os.stat).
         # State is loaded in start() via asyncio.to_thread instead.
 
+    @property
+    def is_connected(self) -> bool:
+        # A token or a live polling task alone cannot prove platform access.
+        if not self.is_running or self._poll_task is None or self._poll_task.done() or self._last_poll_success_at is None:
+            return False
+        freshness = max(self._current_longpoll_timeout_seconds() + 5.0, 10.0) + self._retry_delay + 5.0
+        return time.monotonic() - self._last_poll_success_at <= freshness
+
     async def start(self) -> None:
         if self._running:
             return
@@ -312,6 +302,7 @@ class WechatChannel(Channel):
             await asyncio.to_thread(self._state_dir.mkdir, parents=True, exist_ok=True)
 
         await self._ensure_client()
+        self._last_poll_success_at = None
         self._running = True
         self.bus.subscribe_outbound(self._on_outbound)
         self._poll_task = self._main_loop.create_task(self._poll_loop())
@@ -319,6 +310,7 @@ class WechatChannel(Channel):
 
     async def stop(self) -> None:
         self._running = False
+        self._last_poll_success_at = None
         self.bus.unsubscribe_outbound(self._on_outbound)
 
         if self._poll_task:
@@ -579,6 +571,7 @@ class WechatChannel(Channel):
         while self._running:
             try:
                 if not await self._ensure_authenticated():
+                    self._last_poll_success_at = None
                     await asyncio.sleep(self._retry_delay)
                     continue
 
@@ -593,6 +586,7 @@ class WechatChannel(Channel):
 
                 ret = data.get("ret", 0)
                 if ret not in (0, None):
+                    self._last_poll_success_at = None
                     errcode = data.get("errcode")
                     if errcode == -14:
                         self._bot_token = ""
@@ -611,6 +605,7 @@ class WechatChannel(Channel):
                     await asyncio.sleep(self._retry_delay)
                     continue
 
+                self._last_poll_success_at = time.monotonic() if data.get("ret") == 0 else None
                 self._update_longpoll_timeout(data)
 
                 # Each message is isolated in its own try/except: one message that
@@ -640,6 +635,7 @@ class WechatChannel(Channel):
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self._last_poll_success_at = None
                 logger.exception("[WeChat] polling loop failed")
                 await asyncio.sleep(self._retry_delay)
 

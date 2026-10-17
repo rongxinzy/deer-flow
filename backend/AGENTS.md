@@ -2,6 +2,8 @@
 
 ## Project Overview
 
+Channel administration: follow [the contract](docs/channel-administration.md).
+
 The backend runs a LangGraph-based super agent with sandbox execution, persistent memory, subagent delegation, and extensible tools in isolated per-thread environments.
 
 **Architecture**:
