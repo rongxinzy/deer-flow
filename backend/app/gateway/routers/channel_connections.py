@@ -728,7 +728,15 @@ async def _set_channel_provider_enabled(
         # Bring the leg up in this process. ensure_channel_ready only starts a
         # channel that is missing or stopped; an already running one is left
         # alone, and nothing here rewrites the Deployment.
-        await _ensure_runtime_channel_ready_if_available(provider, live_channels_config)
+        ready = await _ensure_runtime_channel_ready_if_available(provider, live_channels_config)
+        if ready is not True:
+            # Callers treat 2xx as "the toggle took effect". Reporting success
+            # while the leg failed to start leaves the console showing an
+            # enabled channel that cannot receive anything.
+            raise HTTPException(
+                status_code=503 if ready is None else 502,
+                detail=(f"{_PROVIDER_META[provider]['display_name']} channel did not start; check its credentials and the runtime logs."),
+            )
 
     return _provider_response(config, live_channels_config, provider, _PROVIDER_META[provider])
 

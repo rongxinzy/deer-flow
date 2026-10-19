@@ -198,3 +198,48 @@ def test_disable_provider_marks_the_store_disconnected_and_clears_live_state(tmp
     assert config.feishu.enabled is False
 
     anyio.run(repo.close)
+
+
+def test_enable_provider_reports_when_the_runtime_leg_fails(tmp_path, monkeypatch):
+    import anyio
+
+    repo = anyio.run(_make_repo, tmp_path)
+    config = ChannelConnectionsConfig.model_validate({"enabled": True, "feishu": {"enabled": False}})
+    channels_config = {"feishu": {"enabled": True, "app_id": "feishu-app", "app_secret": "feishu-secret"}}
+    app = _make_app(config, repo, channels_config)
+    status = {"service_running": True, "channels": {"feishu": {"enabled": True, "running": False}}}
+
+    async def ensure_channel_ready(provider, runtime_config):
+        return False
+
+    monkeypatch.setattr(
+        "app.channels.service.get_channel_service",
+        lambda: SimpleNamespace(get_status=lambda: status, ensure_channel_ready=ensure_channel_ready),
+    )
+
+    with TestClient(app) as client:
+        response = client.put("/api/channels/feishu/enabled", json={"enabled": True})
+
+    # A 2xx here would make the control service report an enabled channel that
+    # cannot receive anything.
+    assert response.status_code == 502
+    assert "did not start" in response.json()["detail"]
+
+    anyio.run(repo.close)
+
+
+def test_enable_provider_reports_when_the_channel_service_is_unavailable(tmp_path, monkeypatch):
+    import anyio
+
+    repo = anyio.run(_make_repo, tmp_path)
+    config = ChannelConnectionsConfig.model_validate({"enabled": True, "feishu": {"enabled": False}})
+    channels_config = {"feishu": {"enabled": True, "app_id": "feishu-app", "app_secret": "feishu-secret"}}
+    app = _make_app(config, repo, channels_config)
+    monkeypatch.setattr("app.channels.service.get_channel_service", lambda: None)
+
+    with TestClient(app) as client:
+        response = client.put("/api/channels/feishu/enabled", json={"enabled": True})
+
+    assert response.status_code == 503
+
+    anyio.run(repo.close)
