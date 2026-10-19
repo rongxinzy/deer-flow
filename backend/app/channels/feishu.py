@@ -13,6 +13,7 @@ from typing import Any, Literal
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command, strip_leading_mentions
 from app.channels.connection_identity import attach_connection_identity
+from app.channels.feishu_card_retry import is_transient, update_card_with_retry
 from app.channels.message_bus import (
     PENDING_CLARIFICATION_METADATA_KEY,
     RESOLVED_FROM_PENDING_CLARIFICATION_METADATA_KEY,
@@ -316,7 +317,6 @@ class FeishuChannel(Channel):
         self._unwind_ws_loop()
         self.bus.unsubscribe_outbound(self._on_outbound)
         await self._close_and_drain_threadsafe_futures()
-
         background_tasks = tuple(self._background_tasks)
         running_card_tasks = tuple(self._running_card_tasks.values())
         for task in background_tasks:
@@ -644,28 +644,6 @@ class FeishuChannel(Channel):
         if not response.success():
             raise RuntimeError(f"Feishu card update failed: code={response.code}, msg={response.msg}, log_id={response.get_log_id()}")
 
-    async def _update_card_with_retry(self, message_id: str, text: str, *, max_retries: int = 3) -> None:
-        """Patch a card, retrying transient transport failures.
-
-        The final patch falls back to a brand-new reply when it fails, which the
-        user sees as a duplicate card. A transient TLS/connection reset is far
-        more common than a genuine rejection, so retry before giving up.
-        """
-        for attempt in range(1, max_retries + 1):
-            try:
-                await self._update_card(message_id, text)
-                return
-            except Exception:
-                if attempt >= max_retries:
-                    raise
-                logger.warning(
-                    "[Feishu] card update failed (attempt %d/%d), retrying",
-                    attempt,
-                    max_retries,
-                    exc_info=True,
-                )
-                await asyncio.sleep(0.5 * attempt)
-
     def _track_background_task(self, task: asyncio.Task, *, name: str, msg_id: str) -> None:
         """Keep a strong reference to fire-and-forget tasks and surface errors."""
         self._background_tasks.add(task)
@@ -761,9 +739,9 @@ class FeishuChannel(Channel):
             if running_card_id:
                 card_text = self._compose_card_text(msg.text, msg.metadata)
                 try:
-                    await self._update_card_with_retry(running_card_id, card_text)
-                except Exception:
-                    if not msg.is_final:
+                    await update_card_with_retry(self._update_card, running_card_id, card_text)
+                except Exception as exc:
+                    if not msg.is_final or not is_transient(exc):
                         raise
                     logger.exception(
                         "[Feishu] failed to patch running card %s, falling back to final reply",
