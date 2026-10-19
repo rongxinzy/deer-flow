@@ -135,6 +135,14 @@ class OpenVikingMemoryManager(MemoryManager):
             user_id=user_id,
             requester_id=requester_id,
         )
+        self._audit_access(
+            "capture",
+            user_id=user_id,
+            agent_name=agent_name,
+            requester_id=requester_id,
+            hits=len(messages),
+            thread_id=thread_id,
+        )
 
     @classmethod
     def read_failures_are_fatal_for_config(
@@ -225,6 +233,14 @@ class OpenVikingMemoryManager(MemoryManager):
                 )
                 return ""
             documents = self._drop_deleted_documents(documents, peer_id)
+            self._audit_access(
+                "injection",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(documents),
+                thread_id=thread_id,
+            )
             return _format_documents(
                 documents,
                 max_chars=self._config.max_injection_chars,
@@ -296,7 +312,15 @@ class OpenVikingMemoryManager(MemoryManager):
                 )
                 return []
             documents = self._drop_deleted_documents(documents, peer_id)
-            return [_document_to_fact(document) for document in documents]
+            facts = [_document_to_fact(document) for document in documents]
+            self._audit_access(
+                "search",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(facts),
+            )
+            return facts
         finally:
             self._end_operation()
 
@@ -345,6 +369,13 @@ class OpenVikingMemoryManager(MemoryManager):
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
                 for uri in self._scope_uris(user_id, agent_name, requester_id):
                     facts.append({"id": uri, "content": self._read_fact(uri), "source": uri})
+            self._audit_access(
+                "list",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(facts),
+            )
             return {"facts": facts}
         finally:
             self._end_operation()
@@ -375,6 +406,7 @@ class OpenVikingMemoryManager(MemoryManager):
                     agent_name=agent_name,
                     requester_id=requester_id,
                 )
+            self._audit_access("delete", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -436,6 +468,7 @@ class OpenVikingMemoryManager(MemoryManager):
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
                 requested = self._fact_uri(normalized, user_id, agent_name, requester_id)
                 stored = self._write_fact(requested, normalized, create=True)
+            self._audit_access("create", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id), stored
         finally:
             self._end_operation()
@@ -520,6 +553,7 @@ class OpenVikingMemoryManager(MemoryManager):
                         # rejected as a duplicate keeps that file too.
                         self._write_fact(target, normalized, create=True)
                         self._remove_uri(uri, user_id=user_id, agent_name=agent_name, requester_id=requester_id)
+            self._audit_access("update", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -543,8 +577,10 @@ class OpenVikingMemoryManager(MemoryManager):
             return {"facts": []}
         try:
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
-                for root in self._scope_roots(user_id, agent_name, requester_id):
+                roots = self._scope_roots(user_id, agent_name, requester_id)
+                for root in roots:
                     self._remove_uri(root, user_id=user_id, agent_name=agent_name, requester_id=requester_id, recursive=True)
+            self._audit_access("clear", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=len(roots))
             return {"facts": []}
         finally:
             self._end_operation()
@@ -1081,6 +1117,41 @@ class OpenVikingMemoryManager(MemoryManager):
         peer_id: str | None,
     ) -> AbstractContextManager[None]:
         return self._use_actor_peer(peer_id)
+
+    def _audit_access(
+        self,
+        mode: str,
+        *,
+        user_id: str | None,
+        agent_name: str | None,
+        requester_id: str | None,
+        hits: int,
+        thread_id: str | None = None,
+    ) -> None:
+        """Leave a trace of one memory access.
+
+        This is the audit slice of the memory governance contract: *who*
+        touched memory, under *which scope*, and *how much* came back.
+
+        Entry URIs are deliberately absent: the platform's log redaction
+        collapses URL paths to ``/<redacted>`` (`deerflow.logging_config`), so
+        they never reach the trail, and memory content is never logged at all —
+        it can hold personal data, and a trail is not a second copy of the
+        store. A queryable audit store could keep entry ids later; the log layer
+        only carries what actually survives here.
+        """
+
+        parts = [
+            "mode=" + mode,
+            "scope=" + self._config.memory_scope,
+            "user=" + (user_id or "-"),
+            "agent=" + (agent_name or "-"),
+            "requester=" + (requester_id or "-"),
+            "hits=" + str(hits),
+        ]
+        if thread_id:
+            parts.append("thread=" + thread_id)
+        logger.info("memory access %s", " ".join(parts))
 
     def _session_lock(self, session_id: str) -> threading.RLock:
         with self._session_locks_guard:
