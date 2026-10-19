@@ -21,7 +21,14 @@ from pydantic import PrivateAttr
 
 from deerflow.agents.memory.manager import MemoryManager, MemoryManagerError, MemoryReadError
 
+from .audit import record_access
 from .config import OpenVikingConfig
+from .documents import (
+    _document_to_fact,
+    _document_uri,
+    _extract_uris,
+    _format_documents,
+)
 from .session import (
     _advanced_cursor,
     _canonical_peer_id,
@@ -135,6 +142,14 @@ class OpenVikingMemoryManager(MemoryManager):
             user_id=user_id,
             requester_id=requester_id,
         )
+        self._audit_access(
+            "capture",
+            user_id=user_id,
+            agent_name=agent_name,
+            requester_id=requester_id,
+            hits=len(messages),
+            thread_id=thread_id,
+        )
 
     @classmethod
     def read_failures_are_fatal_for_config(
@@ -225,6 +240,14 @@ class OpenVikingMemoryManager(MemoryManager):
                 )
                 return ""
             documents = self._drop_deleted_documents(documents, peer_id)
+            self._audit_access(
+                "injection",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(documents),
+                thread_id=thread_id,
+            )
             return _format_documents(
                 documents,
                 max_chars=self._config.max_injection_chars,
@@ -296,7 +319,15 @@ class OpenVikingMemoryManager(MemoryManager):
                 )
                 return []
             documents = self._drop_deleted_documents(documents, peer_id)
-            return [_document_to_fact(document) for document in documents]
+            facts = [_document_to_fact(document) for document in documents]
+            self._audit_access(
+                "search",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(facts),
+            )
+            return facts
         finally:
             self._end_operation()
 
@@ -345,6 +376,13 @@ class OpenVikingMemoryManager(MemoryManager):
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
                 for uri in self._scope_uris(user_id, agent_name, requester_id):
                     facts.append({"id": uri, "content": self._read_fact(uri), "source": uri})
+            self._audit_access(
+                "list",
+                user_id=user_id,
+                agent_name=agent_name,
+                requester_id=requester_id,
+                hits=len(facts),
+            )
             return {"facts": facts}
         finally:
             self._end_operation()
@@ -375,6 +413,7 @@ class OpenVikingMemoryManager(MemoryManager):
                     agent_name=agent_name,
                     requester_id=requester_id,
                 )
+            self._audit_access("delete", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -436,6 +475,7 @@ class OpenVikingMemoryManager(MemoryManager):
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
                 requested = self._fact_uri(normalized, user_id, agent_name, requester_id)
                 stored = self._write_fact(requested, normalized, create=True)
+            self._audit_access("create", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id), stored
         finally:
             self._end_operation()
@@ -520,6 +560,7 @@ class OpenVikingMemoryManager(MemoryManager):
                         # rejected as a duplicate keeps that file too.
                         self._write_fact(target, normalized, create=True)
                         self._remove_uri(uri, user_id=user_id, agent_name=agent_name, requester_id=requester_id)
+            self._audit_access("update", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=1)
             return self.get_memory(user_id=user_id, agent_name=agent_name, requester_id=requester_id)
         finally:
             self._end_operation()
@@ -543,8 +584,10 @@ class OpenVikingMemoryManager(MemoryManager):
             return {"facts": []}
         try:
             with self._actor_peer_scope(self._governance_peer(user_id, agent_name, requester_id)):
-                for root in self._scope_roots(user_id, agent_name, requester_id):
+                roots = self._scope_roots(user_id, agent_name, requester_id)
+                for root in roots:
                     self._remove_uri(root, user_id=user_id, agent_name=agent_name, requester_id=requester_id, recursive=True)
+            self._audit_access("clear", user_id=user_id, agent_name=agent_name, requester_id=requester_id, hits=len(roots))
             return {"facts": []}
         finally:
             self._end_operation()
@@ -1082,6 +1125,28 @@ class OpenVikingMemoryManager(MemoryManager):
     ) -> AbstractContextManager[None]:
         return self._use_actor_peer(peer_id)
 
+    def _audit_access(
+        self,
+        mode: str,
+        *,
+        user_id: str | None,
+        agent_name: str | None,
+        requester_id: str | None,
+        hits: int,
+        thread_id: str | None = None,
+    ) -> None:
+        """Leave a trace of one memory access; see :mod:`audit` for the shape."""
+
+        record_access(
+            mode,
+            self._config.memory_scope,
+            user_id,
+            agent_name,
+            requester_id,
+            hits,
+            thread_id,
+        )
+
     def _session_lock(self, session_id: str) -> threading.RLock:
         with self._session_locks_guard:
             return self._session_locks.setdefault(
@@ -1189,50 +1254,6 @@ def _load_official_integration() -> dict[str, Any]:
     }
 
 
-def _format_documents(documents: list[Any], *, max_chars: int) -> str:
-    lines: list[str] = []
-    seen: set[str] = set()
-    for document in documents:
-        content = " ".join(str(getattr(document, "page_content", "") or "").split())
-        key = content.casefold()
-        if not content or key in seen:
-            continue
-        seen.add(key)
-        metadata = getattr(document, "metadata", {}) or {}
-        category = metadata.get("openviking_category") or "memory"
-        line = f"- [{category}] {content}"
-        candidate = "\n".join([*lines, line])
-        if len(candidate) > max_chars:
-            remaining = max_chars - len("\n".join(lines)) - (1 if lines else 0)
-            if remaining > 16:
-                lines.append(f"{line[: max(0, remaining - 1)]}…")
-            break
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def _document_uri(document: Any) -> str:
-    """The OpenViking URI a retrieved document points at, if any."""
-
-    metadata = getattr(document, "metadata", {}) or {}
-    uri = metadata.get("openviking_uri") or metadata.get("source")
-    return uri if isinstance(uri, str) else ""
-
-
-def _document_to_fact(document: Any) -> dict[str, Any]:
-    metadata = getattr(document, "metadata", {}) or {}
-    uri = _document_uri(document)
-    score = metadata.get("openviking_score")
-    return {
-        "id": uri,
-        "content": str(getattr(document, "page_content", "") or ""),
-        "category": metadata.get("openviking_category") or "memory",
-        "confidence": score,
-        "source": uri,
-        "score": score,
-    }
-
-
 def _fact_content_key(content: str) -> str:
     """The normalization every layer already compares fact content with.
 
@@ -1274,28 +1295,6 @@ def _validate_confidence(confidence: Any) -> float:
     if isinstance(confidence, bool) or not isinstance(confidence, int | float) or not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence")
     return float(confidence)
-
-
-def _extract_uris(value: Any) -> list[str]:
-    """Collect ``viking://`` URIs from a glob/ls result of any nesting."""
-
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value] if value.startswith("viking://") else []
-    if isinstance(value, dict):
-        if isinstance(value.get("uri"), str):
-            return [value["uri"]]
-        uris: list[str] = []
-        for key in ("matches", "result", "files", "items"):
-            uris.extend(_extract_uris(value.get(key)))
-        return uris
-    if isinstance(value, list):
-        nested: list[str] = []
-        for item in value:
-            nested.extend(_extract_uris(item))
-        return nested
-    return []
 
 
 __all__ = [
