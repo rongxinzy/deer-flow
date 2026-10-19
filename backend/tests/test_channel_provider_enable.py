@@ -198,3 +198,48 @@ def test_disable_provider_marks_the_store_disconnected_and_clears_live_state(tmp
     assert config.feishu.enabled is False
 
     anyio.run(repo.close)
+
+
+def test_disable_provider_succeeds_when_the_bootstrap_flag_is_stale(tmp_path):
+    """A process started before the toggle still reads "disabled" in its file.
+
+    The control service's explicit disable must not depend on that stale copy:
+    there is nothing left to stop, so the request is already satisfied.
+    """
+    import anyio
+
+    repo = anyio.run(_make_repo, tmp_path)
+    config = ChannelConnectionsConfig.model_validate({"enabled": True, "feishu": {"enabled": False}})
+    app = _make_app(config, repo)
+
+    with TestClient(app) as client:
+        response = client.put("/api/channels/feishu/enabled", json={"enabled": False})
+
+    assert response.status_code == 200
+    assert response.json()["enabled"] is False
+    stored = app.state.channel_runtime_config_store.get_provider_config("feishu")
+    assert stored is not None and stored["enabled"] is False
+
+    anyio.run(repo.close)
+
+
+def test_storing_credentials_succeeds_when_the_bootstrap_flag_is_stale(tmp_path):
+    """Saving credentials is itself the intent to use the provider."""
+    import anyio
+
+    repo = anyio.run(_make_repo, tmp_path)
+    config = ChannelConnectionsConfig.model_validate({"enabled": True, "wecom": {"enabled": False}})
+    app = _make_app(config, repo)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/channels/wecom/runtime-config",
+            json={"values": {"bot_id": "wecom-bot", "bot_secret": "wecom-secret"}},
+        )
+
+    assert response.status_code == 200
+    stored = app.state.channel_runtime_config_store.get_provider_config("wecom")
+    assert stored is not None and stored["bot_id"] == "wecom-bot"
+    assert app.state.channels_config["wecom"]["bot_secret"] == "wecom-secret"
+
+    anyio.run(repo.close)

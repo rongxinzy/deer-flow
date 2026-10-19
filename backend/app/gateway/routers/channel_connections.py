@@ -605,8 +605,13 @@ async def _disconnect_channel_provider_runtime(provider: str, request: Request) 
         raise HTTPException(status_code=400, detail="Channel connections are disabled")
 
     provider_config = _provider_config(config, provider)
+    # The declarative flag is a bootstrap copy: a process that started before the
+    # control service toggled this channel on still reads "disabled" here, and an
+    # explicit disable must not depend on it — the store and the live config are
+    # the authority. Nothing left to stop therefore means the request is already
+    # satisfied; only a failed stop below is an error.
     if not provider_config.enabled:
-        raise HTTPException(status_code=400, detail="Channel provider is not enabled")
+        logger.info("Disconnecting %s: not declaratively enabled in this process; clearing live state anyway", provider)
 
     try:
         repo = _get_repository(request, config)
@@ -787,8 +792,11 @@ async def _configure_channel_provider_runtime(provider: str, body: ChannelRuntim
         raise HTTPException(status_code=400, detail="Channel connections are disabled")
 
     provider_config = _provider_config(config, provider)
+    # Same reasoning as the disconnect path: the bootstrap flag can lag the
+    # control service's intent, and storing credentials is itself the intent to
+    # use this provider, so it must not be blocked by a stale file.
     if not provider_config.enabled:
-        raise HTTPException(status_code=400, detail="Channel provider is not enabled")
+        logger.info("Configuring %s: not declaratively enabled in this process; storing the credentials anyway", provider)
 
     channels_config = await _get_channels_config(request)
     existing = channels_config.get(provider)
