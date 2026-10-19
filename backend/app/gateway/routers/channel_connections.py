@@ -100,6 +100,10 @@ class ChannelRuntimeConfigRequest(BaseModel):
     values: dict[str, str] = Field(default_factory=dict)
 
 
+class ChannelEnabledRequest(BaseModel):
+    enabled: bool
+
+
 _PROVIDER_META: dict[str, dict[str, str]] = {
     "telegram": {"display_name": "Telegram", "auth_mode": "deep_link"},
     "slack": {"display_name": "Slack", "auth_mode": "binding_code"},
@@ -636,6 +640,95 @@ async def _disconnect_channel_provider_runtime(provider: str, request: Request) 
     live_channels_config = await _get_channels_config(request)
     live_channels_config.pop(provider, None)
     request.app.state.channels_config = live_channels_config
+
+    return _provider_response(config, live_channels_config, provider, _PROVIDER_META[provider])
+
+
+@router.put("/{provider}/enabled", response_model=ChannelProviderResponse)
+async def set_channel_provider_enabled(
+    provider: str,
+    body: ChannelEnabledRequest,
+    request: Request,
+) -> ChannelProviderResponse:
+    # Same capability guard as POST /{provider}/runtime-config. The enterprise
+    # control service signs the literal request method, so this route is
+    # authorized under "PUT".
+    await require_channel_admin(request, detail=_ADMIN_REQUIRED_DETAIL)
+    if provider == "wechat":
+        async with _get_wechat_qr_login(request).mutation():
+            return await _set_channel_provider_enabled(provider, body.enabled, request)
+    return await _set_channel_provider_enabled(provider, body.enabled, request)
+
+
+async def _set_channel_provider_enabled(
+    provider: str,
+    enabled: bool,
+    request: Request,
+) -> ChannelProviderResponse:
+    config = await _get_channel_connections_config(request)
+    if not config.enabled:
+        raise HTTPException(status_code=400, detail="Channel connections are disabled")
+
+    # Unknown providers still 404, but the declarative enabled flag is
+    # deliberately NOT a gate here: the control service patches the CR first and
+    # this call is what makes the toggle take effect without rolling the
+    # Deployment, so the file this process booted from can still say "disabled"
+    # for a moment — and for a brand-new channel until its next restart.
+    provider_config = _provider_config(config, provider)
+
+    if not enabled:
+        # Turning a provider off is exactly the existing disconnect path: stop
+        # the leg, revoke the bindings and mark the provider disconnected in the
+        # store so the declarative config stays suppressed.
+        await _disconnect_channel_provider_runtime(provider, request)
+        # provider_status and the other admin guards read the declarative config,
+        # which is only a bootstrap copy while this process runs; keep it in step
+        # with the live state.
+        provider_config.enabled = False
+        # Build the response after the flag moved: the disconnect path already
+        # returned one from the still-enabled declarative config.
+        return _provider_response(
+            config,
+            await _get_channels_config(request),
+            provider,
+            _PROVIDER_META[provider],
+        )
+
+    store = await _get_runtime_config_store(request)
+    await asyncio.to_thread(store.enable_provider, provider)
+    # Same live override as above, and it has to happen before the merge below:
+    # merge_runtime_channel_configs skips providers the declarative config does
+    # not know as enabled.
+    provider_config.enabled = True
+
+    # Re-read the live cached config and apply only this provider's change so a
+    # concurrent mutation for a different provider is not clobbered. No await
+    # may occur between this read and the reassignment.
+    live_channels_config = await _get_channels_config(request)
+    existing = live_channels_config.get(provider)
+    if isinstance(existing, dict) and existing:
+        # The live cache already holds the effective config (the boot-time merge
+        # plus every mutation since), so reuse it: rebuilding from config.yaml
+        # would drop credentials that only the runtime store has.
+        runtime_config = dict(existing)
+    else:
+        # A previous disconnect popped this provider from the live cache, so
+        # rebuild its effective config from the declarative config plus the
+        # store: that is what restores credentials the operator owns (for
+        # example a token rendered from the CR) when the flag comes back. No
+        # stored credential is modified.
+        merged = await _load_channels_config(request, config)
+        candidate = merged.get(provider)
+        runtime_config = dict(candidate) if isinstance(candidate, dict) else {}
+    runtime_config["enabled"] = True
+    live_channels_config[provider] = runtime_config
+    request.app.state.channels_config = live_channels_config
+
+    if _runtime_channel_configured(provider, live_channels_config):
+        # Bring the leg up in this process. ensure_channel_ready only starts a
+        # channel that is missing or stopped; an already running one is left
+        # alone, and nothing here rewrites the Deployment.
+        await _ensure_runtime_channel_ready_if_available(provider, live_channels_config)
 
     return _provider_response(config, live_channels_config, provider, _PROVIDER_META[provider])
 
