@@ -99,6 +99,13 @@ ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV PYTHONIOENCODING=utf-8
 
+# System CA bundle for stdlib TLS. `python:*-slim` (like `debian:*-slim`) omits
+# ca-certificates; certifi only covers requests/httpx, while the channel SDKs
+# open WebSockets through `websockets`/stdlib `ssl`, which read the system store.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy Node.js runtime from builder (provides npx for MCP servers)
 COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
