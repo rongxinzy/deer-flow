@@ -101,8 +101,12 @@ class WechatQRLogin:
             self.session = session
         try:
             data = await self.request(session.config)
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as exc:
             session.status = "failed"
+            # Keep the cause in the log: the HTTP caller only reports "502", so a
+            # DNS/TLS failure (the usual reason in a network-restricted cluster)
+            # was indistinguishable from a bad credential or an old runtime.
+            logger.warning("WeChat QR login request failed: %s: %s", type(exc).__name__, str(exc)[:300])
             raise QRLoginError("Unable to request a WeChat QR code. Try again.", 502) from None
         async with self._lock:
             self._get(owner, session.id)
@@ -188,7 +192,11 @@ class WechatQRLogin:
                         try:
                             session.provider = await apply(credentials)
                         except Exception as exc:
-                            logger.warning("WeChat QR credential application failed: %s", type(exc).__name__)
+                            logger.warning(
+                                "WeChat QR credential application failed: %s: %s",
+                                type(exc).__name__,
+                                str(exc)[:300],
+                            )
                             raise QRLoginError("Unable to save or start WeChat. Start again.", 502) from None
                         session.status = "confirmed"
                         logger.info("WeChat QR credentials saved and channel started")
