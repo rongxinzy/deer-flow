@@ -98,6 +98,7 @@ class SlackChannel(Channel):
         self._allowed_users = _normalize_allowed_users(config.get("allowed_users", []))
         self._web_client_factory = config.get("web_client_factory")
         self._connection_web_clients: dict[str, tuple[str, Any]] = {}
+        self._bot_user_id_task: asyncio.Task | None = None
         configured_bot_user_id = config.get("bot_user_id")
         self._bot_user_id = str(configured_bot_user_id).lstrip("@") if configured_bot_user_id else None
 
@@ -128,7 +129,7 @@ class SlackChannel(Channel):
             logger.error("Slack channel requires bot_token and app_token")
             return
 
-        await self._initialize_operator_web_client(str(bot_token))
+        self._initialize_operator_web_client(str(bot_token))
         self._socket_client = SocketModeClient(
             app_token=app_token,
             web_client=self._web_client,
@@ -166,6 +167,11 @@ class SlackChannel(Channel):
         self._running = False
         self.bus.unsubscribe_outbound(self._on_outbound)
         await self._close_and_drain_threadsafe_futures()
+        bot_user_id_task = self._bot_user_id_task
+        self._bot_user_id_task = None
+        if bot_user_id_task is not None:
+            bot_user_id_task.cancel()
+            await asyncio.gather(bot_user_id_task, return_exceptions=True)
         if self._socket_client:
             self._socket_client.close()
             self._socket_client = None
@@ -240,20 +246,46 @@ class SlackChannel(Channel):
 
     # -- internal ----------------------------------------------------------
 
-    async def _initialize_operator_web_client(self, bot_token: str) -> None:
+    def _initialize_operator_web_client(self, bot_token: str) -> None:
+        """Create the operator web client and resolve the bot user id in the background.
+
+        ``auth_test`` is a remote call, and awaiting it in ``start()`` held
+        every runtime-config write for the full Slack API round trip (the same
+        failure mode as the Feishu bot-identity lookup). The id is only used to
+        strip the ``app_mention`` prefix, and ``_on_socket_event`` fills it from
+        the event payload while it is still unknown, so deferring it is safe.
+        """
         self._web_client = self._web_client_factory(token=bot_token)
         if self._bot_user_id is not None:
             return
+        task = asyncio.create_task(self._resolve_bot_user_id())
+        self._bot_user_id_task = task
+        task.add_done_callback(self._finalize_bot_user_id_task)
+
+    async def _resolve_bot_user_id(self) -> None:
+        web_client = self._web_client
+        if web_client is None:
+            return
         try:
-            auth_info = await asyncio.to_thread(self._web_client.auth_test)
-            user_id = auth_info.get("user_id") if isinstance(auth_info, dict) else None
-            if user_id is None:
-                auth_get = getattr(auth_info, "get", None)
-                user_id = auth_get("user_id") if callable(auth_get) else None
-            if isinstance(user_id, str) and user_id:
-                self._bot_user_id = user_id
+            auth_info = await asyncio.to_thread(web_client.auth_test)
         except Exception:
             logger.warning("[Slack] failed to resolve bot user id; app mention text may include the bot mention", exc_info=True)
+            return
+        user_id = auth_info.get("user_id") if isinstance(auth_info, dict) else None
+        if user_id is None:
+            auth_get = getattr(auth_info, "get", None)
+            user_id = auth_get("user_id") if callable(auth_get) else None
+        if isinstance(user_id, str) and user_id:
+            self._bot_user_id = user_id
+
+    def _finalize_bot_user_id_task(self, task: asyncio.Task) -> None:
+        if self._bot_user_id_task is task:
+            self._bot_user_id_task = None
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            logger.warning("[Slack] bot user id resolution failed: %s", exception)
 
     async def _get_web_client_for_message(self, msg: OutboundMessage):
         if msg.connection_id and self._connection_repo is not None:
