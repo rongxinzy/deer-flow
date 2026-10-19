@@ -13,6 +13,7 @@ from typing import Any, Literal
 from app.channels.base import Channel
 from app.channels.commands import is_known_channel_command, strip_leading_mentions
 from app.channels.connection_identity import attach_connection_identity
+from app.channels.feishu_card_retry import update_card_with_retry
 from app.channels.message_bus import (
     PENDING_CLARIFICATION_METADATA_KEY,
     RESOLVED_FROM_PENDING_CLARIFICATION_METADATA_KEY,
@@ -323,7 +324,6 @@ class FeishuChannel(Channel):
         self._unwind_ws_loop()
         self.bus.unsubscribe_outbound(self._on_outbound)
         await self._close_and_drain_threadsafe_futures()
-
         background_tasks = tuple(self._background_tasks)
         running_card_tasks = tuple(self._running_card_tasks.values())
         identity_task = self._identity_task
@@ -749,7 +749,7 @@ class FeishuChannel(Channel):
             if running_card_id:
                 card_text = self._compose_card_text(msg.text, msg.metadata)
                 try:
-                    await self._update_card(running_card_id, card_text)
+                    await update_card_with_retry(self._update_card, running_card_id, card_text)
                 except Exception:
                     if not msg.is_final:
                         raise
