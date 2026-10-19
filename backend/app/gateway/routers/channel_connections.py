@@ -49,6 +49,11 @@ class ChannelProviderResponse(BaseModel):
     unavailable_reason: str | None = None
     auth_mode: str
     connection_status: str
+    # Live transport state of this provider's worker, independent of whether the
+    # requesting user has bound their own account yet. `connection_status`
+    # reports the per-user binding; this reports whether the channel can
+    # actually receive messages right now.
+    runtime_connected: bool = False
     credential_fields: list[ChannelCredentialFieldResponse] = Field(default_factory=list)
     credential_values: dict[str, str] = Field(default_factory=dict)
 
@@ -283,6 +288,37 @@ def _runtime_channel_running(provider: str) -> bool | None:
     return bool(channel_status.get("running"))
 
 
+def _runtime_channel_connected(provider: str) -> bool:
+    """Report whether the live worker holds an authenticated platform connection.
+
+    ``connection_status`` is derived from the per-user binding table, so a
+    running bot with no bound user reports ``not_connected`` even though it is
+    online. Surface the transport state separately so operators can tell "bot
+    offline" from "nobody has linked their account yet".
+    """
+    try:
+        from app.channels.service import get_channel_service
+    except Exception:
+        logger.debug("Unable to inspect channel service status", exc_info=True)
+        return False
+
+    service = get_channel_service()
+    if service is None:
+        return False
+    try:
+        status = service.get_status()
+    except Exception:
+        logger.debug("Unable to read channel service status", exc_info=True)
+        return False
+
+    if not status.get("service_running"):
+        return False
+    channel_status = status.get("channels", {}).get(provider)
+    if not isinstance(channel_status, dict):
+        return False
+    return bool(channel_status.get("connected"))
+
+
 async def _ensure_runtime_channel_ready_if_available(
     provider: str,
     channels_config: dict[str, Any],
@@ -471,6 +507,7 @@ def _provider_response(
         unavailable_reason=unavailable_reason,
         auth_mode=meta["auth_mode"],
         connection_status=connection_status,
+        runtime_connected=_runtime_channel_connected(provider),
         credential_fields=_credential_fields(provider),
         credential_values=credential_values,
     )
