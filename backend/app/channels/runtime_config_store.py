@@ -90,6 +90,23 @@ class ChannelRuntimeConfigStore:
             }
             self._save()
 
+    def enable_provider(self, provider: str) -> None:
+        """Flag a provider as enabled without touching its stored credentials.
+
+        Disabling goes through :meth:`set_provider_disconnected`, which drops
+        the credentials and writes the marker that suppresses the config.yaml
+        copy in :func:`merge_runtime_channel_configs`. Enabling again must
+        therefore clear that marker and flip the flag while keeping whatever
+        credentials the entry still holds — dropping them here would make the
+        toggle silently discard a token the UI entered earlier.
+        """
+        with self._lock:
+            config = dict(self._data.get(provider) or {})
+            config.pop(RUNTIME_CHANNEL_DISABLED_FLAG, None)
+            config["enabled"] = True
+            self._data[provider] = config
+            self._save()
+
     def remove_provider_config(self, provider: str) -> bool:
         with self._lock:
             if provider not in self._data:
