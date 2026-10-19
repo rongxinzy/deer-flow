@@ -34,6 +34,7 @@ PENDING_CLARIFICATION_TTL_SECONDS = 30 * 60
 FEISHU_INBOUND_BATCH_WINDOW_SECONDS = 0.75
 FEISHU_MAX_INBOUND_FILE_BYTES = 20_000_000
 SOURCE_PREVIEW_METADATA_KEY = "feishu_source_preview"
+FEISHU_BOT_IDENTITY_TIMEOUT_SECONDS = 10  # bounds the background bot-identity lookup only
 
 
 def _is_feishu_command(text: str) -> bool:
@@ -66,6 +67,7 @@ class FeishuChannel(Channel):
         self._ws_loop: asyncio.AbstractEventLoop | None = None
         self._api_client = None
         self._bot_open_id = self._non_empty_str(config.get("bot_open_id"))
+        self._identity_task: asyncio.Task | None = None
         self._CreateMessageReactionRequest = None
         self._CreateMessageReactionRequestBody = None
         self._Emoji = None
@@ -224,9 +226,6 @@ class FeishuChannel(Channel):
             return
 
         self._api_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).build()
-        if not self._bot_open_id:
-            identity_client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(10).build()
-            await asyncio.to_thread(self._load_bot_identity, identity_client)
         logger.info("[Feishu] using domain: %s", domain)
         self._main_loop = asyncio.get_event_loop()
 
@@ -244,6 +243,14 @@ class FeishuChannel(Channel):
             daemon=True,
         )
         self._thread.start()
+
+        # Resolve the bot's own open_id only after the channel is serving: that
+        # tenant-token lookup carries its own client timeout, and awaiting it
+        # here made every runtime-config write wait it out (live: a 12.3s POST
+        # whose websocket then failed to connect anyway). Group @ gating falls
+        # back to the declared ``bot_name`` until it lands.
+        if not self._bot_open_id:
+            self._begin_bot_identity_resolution(lark, app_id, app_secret, domain)
         logger.info("Feishu channel started")
 
     def _run_ws(self, app_id: str, app_secret: str, domain: str) -> None:
@@ -319,12 +326,15 @@ class FeishuChannel(Channel):
 
         background_tasks = tuple(self._background_tasks)
         running_card_tasks = tuple(self._running_card_tasks.values())
-        for task in background_tasks:
+        identity_task = self._identity_task
+        self._identity_task = None
+        pending_tasks = [*background_tasks, *running_card_tasks]
+        if identity_task is not None:
+            pending_tasks.append(identity_task)
+        for task in pending_tasks:
             task.cancel()
-        for task in running_card_tasks:
-            task.cancel()
-        if background_tasks or running_card_tasks:
-            await asyncio.gather(*background_tasks, *running_card_tasks, return_exceptions=True)
+        if pending_tasks:
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
         self._background_tasks.clear()
         self._running_card_tasks.clear()
         thread = self._thread
@@ -1133,19 +1143,47 @@ class FeishuChannel(Channel):
         """Match stable bot identity; an explicit name is a legacy fallback."""
         if not mentions:
             return False
+        # Snapshot once: the open_id is resolved by a background task now, so it
+        # can land mid-call and one message must be judged against one identity.
+        # Unresolved -> the declared name is the only usable signal.
+        bot_open_id = self._bot_open_id
         configured = self.config.get("bot_name")
         target = configured.strip().lstrip("@").strip().casefold() if isinstance(configured, str) else ""
         for mention in mentions:
             identity = mention.get("id") if isinstance(mention, dict) else getattr(mention, "id", None)
             open_id = identity.get("open_id") if isinstance(identity, dict) else getattr(identity, "open_id", None)
-            if self._bot_open_id:
-                if open_id == self._bot_open_id:
+            if bot_open_id:
+                if open_id == bot_open_id:
                     return True
                 continue
             name = mention.get("name") if isinstance(mention, dict) else getattr(mention, "name", None)
             if target and isinstance(name, str) and name.strip().lstrip("@").strip().casefold() == target:
                 return True
         return False
+
+    def _begin_bot_identity_resolution(self, lark: Any, app_id: str, app_secret: str, domain: str) -> None:
+        """Resolve the bot's own open_id off the startup path.
+
+        Tracked as a single task so ``stop()`` can cancel it; a cancelled
+        ``to_thread`` await returns at once while the worker thread finishes on
+        its own once the client timeout expires.
+        """
+        client = lark.Client.builder().app_id(app_id).app_secret(app_secret).domain(domain).timeout(FEISHU_BOT_IDENTITY_TIMEOUT_SECONDS).build()
+        task = asyncio.create_task(self._resolve_bot_identity(client))
+        self._identity_task = task
+        task.add_done_callback(self._finalize_identity_task)
+
+    async def _resolve_bot_identity(self, client: Any) -> None:
+        await asyncio.to_thread(self._load_bot_identity, client)
+
+    def _finalize_identity_task(self, task: asyncio.Task) -> None:
+        if self._identity_task is task:
+            self._identity_task = None
+        if task.cancelled():
+            return
+        exception = task.exception()
+        if exception is not None:
+            logger.warning("[Feishu] bot identity resolution failed: %s", exception)
 
     def _load_bot_identity(self, client: Any) -> None:
         """Resolve the application's own bot through the SDK's tenant auth."""
