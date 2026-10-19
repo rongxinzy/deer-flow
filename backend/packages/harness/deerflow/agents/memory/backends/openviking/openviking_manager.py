@@ -21,7 +21,14 @@ from pydantic import PrivateAttr
 
 from deerflow.agents.memory.manager import MemoryManager, MemoryManagerError, MemoryReadError
 
+from .audit import record_access
 from .config import OpenVikingConfig
+from .documents import (
+    _document_to_fact,
+    _document_uri,
+    _extract_uris,
+    _format_documents,
+)
 from .session import (
     _advanced_cursor,
     _canonical_peer_id,
@@ -1128,30 +1135,17 @@ class OpenVikingMemoryManager(MemoryManager):
         hits: int,
         thread_id: str | None = None,
     ) -> None:
-        """Leave a trace of one memory access.
+        """Leave a trace of one memory access; see :mod:`audit` for the shape."""
 
-        This is the audit slice of the memory governance contract: *who*
-        touched memory, under *which scope*, and *how much* came back.
-
-        Entry URIs are deliberately absent: the platform's log redaction
-        collapses URL paths to ``/<redacted>`` (`deerflow.logging_config`), so
-        they never reach the trail, and memory content is never logged at all —
-        it can hold personal data, and a trail is not a second copy of the
-        store. A queryable audit store could keep entry ids later; the log layer
-        only carries what actually survives here.
-        """
-
-        parts = [
-            "mode=" + mode,
-            "scope=" + self._config.memory_scope,
-            "user=" + (user_id or "-"),
-            "agent=" + (agent_name or "-"),
-            "requester=" + (requester_id or "-"),
-            "hits=" + str(hits),
-        ]
-        if thread_id:
-            parts.append("thread=" + thread_id)
-        logger.info("memory access %s", " ".join(parts))
+        record_access(
+            mode,
+            self._config.memory_scope,
+            user_id,
+            agent_name,
+            requester_id,
+            hits,
+            thread_id,
+        )
 
     def _session_lock(self, session_id: str) -> threading.RLock:
         with self._session_locks_guard:
@@ -1260,50 +1254,6 @@ def _load_official_integration() -> dict[str, Any]:
     }
 
 
-def _format_documents(documents: list[Any], *, max_chars: int) -> str:
-    lines: list[str] = []
-    seen: set[str] = set()
-    for document in documents:
-        content = " ".join(str(getattr(document, "page_content", "") or "").split())
-        key = content.casefold()
-        if not content or key in seen:
-            continue
-        seen.add(key)
-        metadata = getattr(document, "metadata", {}) or {}
-        category = metadata.get("openviking_category") or "memory"
-        line = f"- [{category}] {content}"
-        candidate = "\n".join([*lines, line])
-        if len(candidate) > max_chars:
-            remaining = max_chars - len("\n".join(lines)) - (1 if lines else 0)
-            if remaining > 16:
-                lines.append(f"{line[: max(0, remaining - 1)]}…")
-            break
-        lines.append(line)
-    return "\n".join(lines)
-
-
-def _document_uri(document: Any) -> str:
-    """The OpenViking URI a retrieved document points at, if any."""
-
-    metadata = getattr(document, "metadata", {}) or {}
-    uri = metadata.get("openviking_uri") or metadata.get("source")
-    return uri if isinstance(uri, str) else ""
-
-
-def _document_to_fact(document: Any) -> dict[str, Any]:
-    metadata = getattr(document, "metadata", {}) or {}
-    uri = _document_uri(document)
-    score = metadata.get("openviking_score")
-    return {
-        "id": uri,
-        "content": str(getattr(document, "page_content", "") or ""),
-        "category": metadata.get("openviking_category") or "memory",
-        "confidence": score,
-        "source": uri,
-        "score": score,
-    }
-
-
 def _fact_content_key(content: str) -> str:
     """The normalization every layer already compares fact content with.
 
@@ -1345,28 +1295,6 @@ def _validate_confidence(confidence: Any) -> float:
     if isinstance(confidence, bool) or not isinstance(confidence, int | float) or not isfinite(confidence) or not 0.0 <= confidence <= 1.0:
         raise ValueError("confidence")
     return float(confidence)
-
-
-def _extract_uris(value: Any) -> list[str]:
-    """Collect ``viking://`` URIs from a glob/ls result of any nesting."""
-
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value] if value.startswith("viking://") else []
-    if isinstance(value, dict):
-        if isinstance(value.get("uri"), str):
-            return [value["uri"]]
-        uris: list[str] = []
-        for key in ("matches", "result", "files", "items"):
-            uris.extend(_extract_uris(value.get(key)))
-        return uris
-    if isinstance(value, list):
-        nested: list[str] = []
-        for item in value:
-            nested.extend(_extract_uris(item))
-        return nested
-    return []
 
 
 __all__ = [

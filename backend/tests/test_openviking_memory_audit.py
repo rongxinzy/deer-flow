@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 import deerflow.agents.memory.backends.openviking.openviking_manager as openviking_manager_module
 
-AUDIT_LOGGER = "deerflow.agents.memory.backends.openviking.openviking_manager"
+AUDIT_LOGGER = "deerflow.agents.memory.backends.openviking.audit"
 
 SECRET_CONTENT = "本季度的报价是 128000 元，客户还在等回复"
 

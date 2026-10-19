@@ -94,7 +94,7 @@
     "backend/packages/harness/deerflow/agents/lead_agent/agent.py": 1336,
     "backend/tests/test_mcp_cache.py": 1323,
     "backend/tests/test_scheduled_task_router_behavior.py": 1311,
-    "backend/packages/harness/deerflow/agents/memory/backends/openviking/openviking_manager.py": 1305,
+    "backend/packages/harness/deerflow/agents/memory/backends/openviking/openviking_manager.py": 1304,
     "backend/packages/harness/deerflow/tools/builtins/task_tool.py": 1278,
     "backend/tests/test_ragflow_tools.py": 1267,
     "backend/packages/harness/deerflow/community/aio_sandbox/aio_sandbox.py": 1265,
