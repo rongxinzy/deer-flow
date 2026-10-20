@@ -241,3 +241,9 @@ These apply repo-wide; module guides own the module-specific detail.
   belong here in `AGENTS.md`; `CLAUDE.md` is a thin import shim.
 
 [DEVOPS.md](DEVOPS.md)
+
+## File Size
+
+- New files must not exceed 5000 tokens (estimated as ceil(bytes / 4)). If you modify an existing file over that limit, you are responsible for splitting it. Markdown (`*.md`, `*.mdx`) is exempt.
+- The pre-commit framework hook in `.pre-commit-config.yaml` (`scripts/check-new-file-tokens.mjs`) blocks newly added files over 5000 tokens. It is the only git hook; lint and tests run in CI. `make install` installs it.
+- How to split: break the file up by responsibility into cohesive modules (~2000-3000 tokens each, one concern per file). Move types/constants, pure helpers and sub-components/handlers into sibling files. Keep the original path as a thin entry or re-export so imports stay stable, or update every import. Put fixtures and test data in separate files. Never minify, strip comments or whitespace, or extend the exclude list to get under the limit. The hook error message has TS/Go/Python examples.
