@@ -61,6 +61,61 @@ changing its configuration. Other memory backends do not consume these
 DeerMem-specific fields. Existing external memory templates remain the mechanism
 for complete template replacement; this feature adds no editing endpoint or UI.
 
+## Rotating model token files
+
+For a trusted workload gateway, operators may select this opt-in model class in
+`config.yaml`. The OpenAI-compatible adapter supports Chat Completions/Responses.
+For a DeepSeek upstream behind the gateway, select the separate DeepSeek class
+below to preserve reasoning, tool-history and `max_tokens` behavior. Anthropic
+and other provider-specific adapters are not automatically replaced.
+
+```yaml
+models:
+  - name: employee-gateway
+    use: deerflow.models.token_file:TokenFileChatOpenAI
+    model: aep-model-id
+    base_url: http://model-gateway.example.svc/v1
+    api_key_file: /var/run/secrets/zhiyuan/model-access/token
+    supports_thinking: false
+```
+
+For DeepSeek, use `deerflow.models.token_file_deepseek:TokenFileChatDeepSeek`
+and its native `api_base` field instead of `base_url`. Keep the gateway endpoint
+and AEP model ID; do not point this workload bearer at the public DeepSeek API.
+Configure thinking/effort and other capabilities as for the existing DeepSeek
+adapter. The same token-file and failure rules apply. No provider credentials
+are read from `OPENAI_API_KEY` or `DEEPSEEK_API_KEY` on this path.
+
+Use the gateway's AEP model ID, not its upstream provider model name. The
+`api_key_file` path must be absolute; it can also be an existing `$ENV_VAR`
+configuration reference. Set `base_url` explicitly to a trusted HTTP(S) endpoint
+with no embedded credentials, query or fragment. In-cluster HTTP is supported;
+the operator must provide the appropriate network and transport trust boundary.
+Do not use a provider API key or an ordinary Kubernetes API audience token here.
+The cluster must project a short-lived token for the gateway's configured audience,
+and that gateway must validate the workload binding, entitlement and model policy.
+
+The native OpenAI SDK reads the named file before each HTTP attempt, including
+retries; its async client offloads the reader to a worker. The same model instance
+observes atomic projected-volume symlink rotation. In-flight requests keep the
+credential they already sent. The adapter neither stores a previous bearer nor
+renews the file. Missing, empty, non-regular, malformed or oversized files fail
+before HTTP without falling back to environment or static API keys. A trailing
+line ending is accepted; the maximum file size is 64 KiB.
+
+Static keys, preconstructed OpenAI SDK clients and Authorization header overrides
+are rejected. Custom HTTP transports remain trusted operator code. The path is
+excluded from model field serialization and this class disables LangChain
+constructor serialization. The adapter does not copy bearer contents into config
+or serialized model fields; native SDK clients retain their current request key
+internally and refresh it before every attempt. Keep the token volume read-only,
+out of source/build inputs, logs and traces.
+
+This option only consumes an already delivered token. The identity registry,
+trusted employee-to-ServiceAccount mapping, licensed workload authorization,
+policy publication, routing and quota isolation must be deployed and verified
+separately; selecting this class does not activate that complete chain.
+
 ## Model request admission
 
 For request-per-minute limits, opt into pacing on each relevant `models[]`

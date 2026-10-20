@@ -130,6 +130,11 @@ Optional per-model [`request_admission`](backend/docs/CONFIGURATION.md#model-req
 paces requests to help stay within provider request-per-minute limits.
 It is disabled by default; see the linked guide to enable it.
 
+Managed Kubernetes workloads can opt into a [rotating model token file](backend/docs/CONFIGURATION.md#rotating-model-token-files)
+for an explicitly configured OpenAI-compatible gateway. File rotation takes effect
+on the next request without restarting the model client; this does not provision
+an employee identity, authorize models, or replace provider-specific adapters.
+
 1. **Clone the DeerFlow repository**
 
    ```bash
