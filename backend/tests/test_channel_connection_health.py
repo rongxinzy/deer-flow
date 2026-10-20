@@ -111,7 +111,10 @@ async def test_wechat_health_follows_successful_polls_failure_and_recovery(monke
             assert not channel.is_connected, "a stuck poll cannot keep an old success alive forever"
         release[1].set()
         await asyncio.wait_for(entered[2].wait(), 2)
-        assert not channel.is_connected
+        if failure == "missing-ret":
+            assert channel.is_connected, "an empty long poll omits ret and still counts as connected"
+        else:
+            assert not channel.is_connected
         release[2].set()
         await asyncio.wait_for(entered[3].wait(), 2)
         assert channel.is_connected

@@ -605,8 +605,6 @@ class WechatChannel(Channel):
                     await asyncio.sleep(self._retry_delay)
                     continue
 
-                # ret in (0, None) already passed the failure branch above; an
-                # empty long poll omits `ret`, which must still count as success.
                 self._last_poll_success_at = time.monotonic()
                 self._update_longpoll_timeout(data)
 
