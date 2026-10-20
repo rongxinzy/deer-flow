@@ -58,6 +58,29 @@ the same policy first so run metadata reports the effective values. Design note:
 `tests/test_reasoning_contract.py`, the contract section of
 `tests/test_model_factory.py`, `tests/test_models_router_reasoning.py`.
 
+### Rotating model bearer files (`models/token_file.py`)
+
+`TokenFileChatOpenAI` is an explicit reflected opt-in for a trusted gateway.
+Reuse the OpenAI SDK's API-key callable and native async offload; do not add a
+transport/auth cache or pin the resolved target of a projected token symlink.
+An absent/invalid file must fail closed before HTTP on every attempt, including
+after a previous success. Never fall back to environment credentials. The
+destination is explicit; static keys, prebuilt SDK clients and Authorization
+overrides are rejected. Custom HTTP transports are trusted operator code.
+The file field is excluded and LangChain constructor serialization is disabled.
+
+The OpenAI class preserves `PatchedChatOpenAI` behavior. For DeepSeek use
+`token_file_deepseek:TokenFileChatDeepSeek` with explicit `api_base`: it retains
+`PatchedChatDeepSeek` request/response semantics and overrides only native SDK
+client construction because LangChain's DeepSeek constructor accepts static
+SecretStr keys only. The native async SDK gets an awaitable reader offloaded via
+`asyncio.to_thread`. No provider environment fallback or second token cache.
+Neither adapter establishes employee identity, entitlement, binding publication
+or full managed-runtime adoption. Those remain independent integration
+requirements. Tests exercise native SDK HTTP boundaries,
+atomic replacement and projected symlink rotation, error redaction, reflection
+factory construction and strict async blocking-I/O detection.
+
 ### Claude Code Credentials (`packages/harness/deerflow/models/credential_loader.py`)
 
 - `ClaudeChatModel.model_post_init` calls `load_claude_code_credential()` for every instance, and `create_chat_model` builds fresh instances per run (lead agent, title, summarization, subagents)
