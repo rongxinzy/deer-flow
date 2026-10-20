@@ -605,7 +605,7 @@ class WechatChannel(Channel):
                     await asyncio.sleep(self._retry_delay)
                     continue
 
-                self._last_poll_success_at = time.monotonic() if data.get("ret") == 0 else None
+                self._last_poll_success_at = time.monotonic()
                 self._update_longpoll_timeout(data)
 
                 # Each message is isolated in its own try/except: one message that
